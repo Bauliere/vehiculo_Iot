@@ -1,0 +1,151 @@
+{
+  "info": {
+    "_postman_id": "ef71e941-3d3e-4217-bae8-bf2c01bb78dd",
+    "name": "Vehículo IoT simple",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Usa No environment y las Variables de esta colección. Peticiones 01-04: consultar IDs existentes. Las tres pruebas son 05 (POST), 06 (GET) y 07 (DEMO observada en una pestaña WebSocket). 08 cancela si hace falta. No hay scripts, baselines ni copias del historial antes/después: reutiliza 06. Lee README.md."
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "vehiculo_id",
+      "value": "1",
+      "description": "Reemplazar con id_vehiculo de 01 - Vehículos."
+    },
+    {
+      "key": "comando_id",
+      "value": "1",
+      "description": "Reemplazar con un id_comando activo de 02 - Comandos."
+    },
+    {
+      "key": "demo_id",
+      "value": "1",
+      "description": "Reemplazar con id_demo de 03 - DEMO."
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "description": "Completar sólo en Postman con API_ADMIN_KEY de .env."
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Vehículos",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/vehiculos",
+        "description": "Devuelve vehículos. Elige uno activo y escribe su id_vehiculo en vehiculo_id. Esperado: 200."
+      },
+      "response": []
+    },
+    {
+      "name": "02 - Comandos",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/comandos",
+        "description": "Devuelve el catálogo del vehículo. Elige uno activo y escribe su id_comando en comando_id. Esperado: 200."
+      },
+      "response": []
+    },
+    {
+      "name": "03 - DEMO",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/demos",
+        "description": "Devuelve DEMO del vehículo. Elige una activa y escribe su id_demo en demo_id. Esperado: 200."
+      },
+      "response": []
+    },
+    {
+      "name": "04 - Pasos de la DEMO",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/demos/{{demo_id}}/movimientos",
+        "description": "Devuelve los pasos por orden, con duracion_ms y pausa_ms. Anota cuántos son para comparar con WebSocket. Esperado: 200."
+      },
+      "response": []
+    },
+    {
+      "name": "05 - Movimiento individual",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/movimientos",
+        "description": "PRUEBA 1. Esta única petición actualiza estado y registra historial en una transacción. Esperado: 200. Usa 06 si quieres consultar el historial después.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id_comando\": {{comando_id}},\n  \"origen\": \"POSTMAN\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "06 - Historial",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/historial",
+        "description": "PRUEBA 2. Máximo diez individuales del más reciente al más antiguo. Esperado: 200. Para la prueba DEMO reutiliza esta misma petición antes y después y compara los JSON."
+      },
+      "response": []
+    },
+    {
+      "name": "07 - Iniciar DEMO",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/demos/{{demo_id}}/iniciar",
+        "description": "PRUEBA 3. Antes abre New > WebSocket y conecta a ws://localhost:8000/ws/vehiculos/ID_REAL. Debe llegar estado_inicial. Después envía este POST. Esperado: 202. En WebSocket observa demo_inicio, N demo_movimiento y demo_fin. Repite 06 al finalizar: historial sin cambios."
+      },
+      "response": []
+    },
+    {
+      "name": "08 - Cancelar DEMO (opcional)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "url": "{{base_url}}/vehiculos/{{vehiculo_id}}/demos/{{demo_id}}/cancelar",
+        "description": "Sólo mientras una DEMO está en ejecución. Esperado: 200 y demo_cancelada en WebSocket. No es una prueba adicional de entrega."
+      },
+      "response": []
+    }
+  ]
+}
