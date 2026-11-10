@@ -1,0 +1,13 @@
+node_modules/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+test-results/
+.DS_Store
+Thumbs.db
+.vscode/
+
