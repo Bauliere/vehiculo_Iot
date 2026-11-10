@@ -5,6 +5,7 @@ export class ControlState {
       phase: 'idle', requested: 'Ninguna acción solicitada', http: 'Pendiente',
       event: 'Sin evento de acción', message: 'Conecta tu sesión para comenzar.',
       tone: 'neutral', commandId: null, demoId: null, demoProgress: '', authError: null,
+      authValidated: false,
     };
     this.listeners = new Set();
   }

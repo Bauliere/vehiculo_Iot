@@ -146,3 +146,45 @@ test('un evento final de DEMO no desbloquea una parada que la API rechazó', asy
   assert.equal(state.value.phase, 'uncertain');
   assert.equal(state.value.authError, 401);
 });
+
+test('la clave se valida con la respuesta de una orden, no con consultas ni eventos WSS', async () => {
+  const response = deferred();
+  const { control, api, state } = setup({
+    getVehicle: async () => ({ id_vehiculo: 1 }),
+    move: async () => response.promise,
+  });
+  assert.equal(state.value.authValidated, false);
+  await api.getVehicle(1);
+  control.handleEvent({ tipo: 'estado_inicial', id_vehiculo: 1, timestamp: new Date().toISOString(), codigo: 9 });
+  assert.equal(state.value.authValidated, false);
+  const moving = send(control, 1);
+  control.handleEvent({ tipo: 'movimiento_individual', id_vehiculo: 1, id_comando: 1,
+    codigo: 1, comando: 'AVANZAR', timestamp: new Date().toISOString() });
+  assert.match(state.value.event, /AVANZAR/);
+  assert.equal(state.value.authValidated, false);
+  response.resolve({ id_vehiculo: 1, id_comando: 1 });
+  await moving;
+  assert.equal(state.value.authValidated, true);
+});
+
+test('un rechazo de autorización invalida una clave aceptada anteriormente', async () => {
+  for (const status of [401, 403]) {
+    const { control, api, state } = setup();
+    await control.stop();
+    assert.equal(state.value.authValidated, true);
+    api.move = async () => { throw Object.assign(new Error('Clave rechazada'), { status }); };
+    assert.equal(await control.stop(), false);
+    assert.equal(state.value.authValidated, false);
+    assert.equal(state.value.authError, status);
+    assert.equal(state.value.phase, 'uncertain');
+  }
+});
+
+test('solo una respuesta coherente de DEMO puede validar la clave', async () => {
+  const accepted = setup();
+  await accepted.control.startDemo(1);
+  assert.equal(accepted.state.value.authValidated, true);
+  const mismatch = setup({ startDemo: async () => ({ id_vehiculo: 2, id_demo: 1 }) });
+  await mismatch.control.startDemo(1);
+  assert.equal(mismatch.state.value.authValidated, false);
+});

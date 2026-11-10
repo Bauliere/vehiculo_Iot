@@ -12,7 +12,6 @@ export class ControlView {
   }
   vehicle(vehicle) {
     this.text('vehicle-name', vehicle.nombre);
-    this.text('vehicle-description', vehicle.modelo || 'Control remoto IoT');
     this.text('vehicle-id', `VEHÍCULO ${vehicle.id_vehiculo.toString().padStart(2, '0')}`);
   }
   commands(commands, onCommand) {

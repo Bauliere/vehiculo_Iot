@@ -18,7 +18,7 @@ Deja esa terminal abierta y abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/
 2. Mantén encendidos el laboratorio, EC2, la API, HTTPS y RDS.
 3. Para esta actividad, deja apagados la ESP y el control físico. El objetivo es comprobar solicitudes y eventos, y el firmware ya cargado podría responder si se conecta.
 4. Abre la aplicación publicada en tu teléfono: [https://bauliere.github.io/vehiculo_Iot/](https://bauliere.github.io/vehiculo_Iot/), si elegiste ese nombre de repositorio.
-5. Introduce la clave de control y pulsa **Activar control**. El campo vacío es normal si aparece **Clave cargada · Pendiente de validar**; la validación ocurre al enviar una orden. Evita que la clave aparezca en capturas o en la consola.
+5. Introduce la clave de control y pulsa **Activar control**. El campo se vacía y el indicador muestra **Por validar**. Pulsa **DETENER**: una respuesta 200 cambia el indicador a **Validado**. Un 401/403 muestra **No válido**. Evita que la clave aparezca en capturas o en la consola.
 6. Comprueba el nombre del vehículo y los tres indicadores. WSS debe mostrar **En línea**; API **Disponible**; RDS **Disponible** solamente tras su diagnóstico.
 7. Usa tu laptop para observar los eventos en Postman mientras controlas desde el teléfono. Así no cambias el foco de la página de control durante una DEMO.
 

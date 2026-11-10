@@ -24,6 +24,8 @@ La dirección de la API y el vehículo se configuran en `js/config.js`. El backe
 3. Usa el joystick o las flechas del teclado. Al soltar se envía **DETENER**. Los botones adicionales controlan la caja, las luces y el sonido.
 4. Selecciona una DEMO para consultar su secuencia, iniciarla o cancelarla. **DETENER** también cancela la DEMO conocida.
 
+Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01 y Rosa claro. La paleta se recuerda en el navegador. El indicador de acceso pasa de **Por validar** a **Validado** cuando la API acepta una orden.
+
 Si una parada no se confirma, los movimientos quedan bloqueados hasta que se pueda confirmar DETENER. Los eventos WSS confirman la orden del servidor, no el movimiento físico del vehículo.
 
 Un error 401 indica que la API rechazó la clave. Sustitúyela en **Acceso de control** y vuelve a pulsar **DETENER**. Localhost y Pages mantienen claves independientes.

@@ -7,6 +7,7 @@ import { ControlState } from './state/control-state.js';
 import { ControlController } from './controllers/control-controller.js';
 import { ControlView } from './components/control-view.js';
 import { Joystick } from './components/joystick.js';
+import { ThemeManager } from './components/theme-manager.js';
 
 /** Punto de composición: conecta clases de dominio, servicios y componentes. */
 class ControlApplication {
@@ -14,6 +15,7 @@ class ControlApplication {
     this.api = new ApiClient(CONFIG.apiBaseUrl, { timeoutMs: CONFIG.requestTimeoutMs });
     this.state = new ControlState();
     this.view = new ControlView(document);
+    this.theme = new ThemeManager(document);
     this.catalog = new Catalog([]);
     this.ready = false;
     this.loading = false;
@@ -44,11 +46,12 @@ class ControlApplication {
   }
 
   start() {
+    this.theme.start();
     for (const id of ['api-key', 'session-save', 'session-clear']) this.view.get(id).disabled = false;
     this.view.text('developer-credit', `Desarrollado por ${CONFIG.author} · ${CONFIG.year}`);
     this.view.text('academic-credit', `${CONFIG.subject} · Profesor: ${CONFIG.teacher}`);
     const url = this.view.get('api-url');
-    url.textContent = new URL(CONFIG.apiBaseUrl).hostname;
+    url.textContent = 'Swagger UI ↗';
     url.href = `${CONFIG.apiBaseUrl}/docs`;
     this.view.get('stop-button').addEventListener('click', () => void this.controller.stop());
     this.view.get('demo-cancel').addEventListener('click', () => void this.controller.stop());
@@ -69,9 +72,8 @@ class ControlApplication {
         this.api.setKey(this.view.get('api-key').value);
         this.view.get('api-key').value = '';
         this.sessionNotice = '';
-        this.view.text('session-status', this.api.hasKey() ? 'Clave cargada · Pendiente de validar' : 'Sin clave de control.');
         const needsStop = this.state.value.phase === 'uncertain' || this.controller.demoId !== null;
-        this.state.update({ authError: null, message: this.api.hasKey()
+        this.state.update({ authError: null, authValidated: false, message: this.api.hasKey()
           ? needsStop ? 'Clave actualizada. Pulsa DETENER para confirmar la parada antes de continuar.' : 'Sesión preparada. Elige un control cuando la conexión esté disponible.'
           : 'Introduce una clave para controlar.', tone: 'neutral' });
       } catch (error) { this.sessionNotice = error.message; this.controller.error(error); }
@@ -83,9 +85,8 @@ class ControlApplication {
       }
       this.api.setKey('');
       this.sessionNotice = '';
-      this.state.update({ authError: null });
+      this.state.update({ authError: null, authValidated: false });
       this.view.get('api-key').value = '';
-      this.view.text('session-status', 'Clave eliminada de esta pestaña.');
       this.updateControls();
     });
     document.addEventListener('visibilitychange', () => {
@@ -125,7 +126,7 @@ class ControlApplication {
       this.view.commands(catalog.extras(), id => this.controller.requestCommand(id));
       this.view.demos(this.demos);
       this.ready = true;
-      this.state.update({ message: 'Catálogo cargado desde la API. Introduce tu clave de control para operar.', tone: 'neutral' });
+      this.state.update({ message: 'Vehículo listo.', tone: 'neutral' });
     } catch (error) {
       this.state.update({ message: error.message, tone: 'error' });
     } finally {
@@ -149,7 +150,7 @@ class ControlApplication {
       if (!steps.length) { this.view.text('demo-description', 'Esta DEMO no tiene pasos. Complétala desde administración.'); return; }
       const seconds = steps.reduce((sum, step) => sum + step.duracion_ms + step.pausa_ms, 0) / 1000;
       this.demoSelection = id;
-      this.view.text('demo-description', `${steps.length} pasos · ${seconds.toLocaleString('es-MX')} s · Secuencia ejecutada por AWS`);
+      this.view.text('demo-description', `${steps.length} pasos · ${seconds.toLocaleString('es-MX')} s`);
     } catch (error) {
       if (generation === this.demoGeneration) this.view.text('demo-description', error.message);
     } finally { this.updateControls(); }
@@ -188,23 +189,24 @@ class ControlApplication {
     this.joystick.setEnabled((enabled || crossingNeutral) && allDirections);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
       hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain });
-    const blocked = [];
-    if (!this.apiAvailable) blocked.push('la API aún no responde desde esta página; comprueba conexión, HTTPS y CORS');
-    if (!this.ready) blocked.push('falta cargar el catálogo del vehículo');
-    if (!this.wsConnected) blocked.push('WebSocket aún no está conectado');
-    if (demo) blocked.push('hay una DEMO en ejecución');
-    if (uncertain) blocked.push('falta confirmar la parada; pulsa DETENER');
-    if (phase === 'stopping') blocked.push('se está confirmando DETENER');
-    let access = 'Introduce tu clave y pulsa Activar control.';
-    if (this.api.hasKey()) {
-      access = 'Clave cargada en esta pestaña. El campo se vació para ocultarla. La API comprobará sus permisos al enviar una orden.';
-    }
-    if (authError) {
-      this.view.text('session-status', `Clave rechazada · HTTP ${authError}`);
-      this.view.get('session-panel').open = true;
-      access = `La API rechazó la clave de esta pestaña (HTTP ${authError}). Pega el valor vigente de API_CONTROL_KEY del servidor, pulsa Activar control y después DETENER. Local y Pages usan sesiones independientes.`;
-    }
-    this.view.text('session-feedback', this.sessionNotice || `${access}${blocked.length ? ` Controles bloqueados: ${blocked.join('; ')}.` : this.api.hasKey() ? ' Controles disponibles.' : ''}`);
+    const accessState = !this.api.hasKey() ? 'empty' : authError ? 'invalid'
+      : this.state.value.authValidated ? 'valid'
+        : !this.apiAvailable || !this.wsConnected ? 'offline' : 'pending';
+    const accessLabels = { empty: 'Sin clave', pending: 'Por validar', valid: 'Validado', invalid: 'No válido', offline: 'Sin conexión' };
+    this.view.get('session-indicator').dataset.state = accessState;
+    this.view.text('session-status', accessLabels[accessState]);
+    if (authError) this.view.get('session-panel').open = true;
+    const feedback = this.sessionNotice || (authError ? `HTTP ${authError} · Revisa tu clave.`
+      : uncertain ? 'Pulsa DETENER para continuar.'
+        : phase === 'stopping' ? 'Deteniendo…'
+          : !this.apiAvailable ? 'Esperando la API.'
+            : !this.wsConnected ? 'Conectando WSS.'
+              : !this.ready ? 'Cargando vehículo.'
+                : demo ? 'DEMO en curso.'
+                  : accessState === 'pending' ? 'Envía una orden para validar.' : '');
+    this.view.text('session-feedback', feedback);
+    this.view.get('session-feedback').hidden = !feedback;
+    this.view.get('session-feedback').dataset.tone = authError || this.sessionNotice ? 'error' : 'neutral';
   }
 }
 

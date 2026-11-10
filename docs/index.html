@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="forest">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,12 +17,14 @@
   <div class="ambient ambient-two" aria-hidden="true"></div>
   <div class="app-shell container">
     <header class="app-header">
-      <a class="brand" href="./" aria-label="Control IoT, inicio">
-        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 23h18M9 23v-6h11v6M11 17v-7h8l4 7M19 10l5-4 3 3-4 6M7 26h18"/></svg></span>
-        <span>CONTROL<span class="brand-light"> / IoT</span></span>
-      </a>
-      <span class="header-caption">Conecta. Controla. Explora.</span>
-      <button class="icon-button" id="refresh-button" type="button" aria-label="Comprobar conexiones y actualizar datos" title="Actualizar conexión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.7-1L20 9M4 15l2.2 3A7 7 0 0 0 18 17"/></svg></button>
+      <div class="brand-group">
+        <button class="theme-button" id="theme-button" type="button" aria-label="Cambiar paleta de colores" title="Cambiar paleta de colores">
+          <img src="./assets/fausto.png" alt="" width="54" height="54">
+          <span class="visually-hidden" id="theme-name" role="status">Bosque</span>
+        </button>
+        <a class="brand" href="./" aria-label="Control IoT, inicio">CONTROL<span class="brand-light"> / IoT</span></a>
+      </div>
+      <button class="icon-button" id="refresh-button" type="button" aria-label="Comprobar conexiones y actualizar datos" title="Actualizar conexión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10a8 8 0 1 0-2.3 7.6M20 4v6h-6"/></svg></button>
     </header>
 
     <main id="main-control">
@@ -30,7 +32,6 @@
         <div>
           <p class="eyebrow"><span class="tiny-square" aria-hidden="true"></span> PANEL DE CONTROL <span class="eyebrow-separator">/</span> <span id="vehicle-id">VEHÍCULO 01</span></p>
           <h1 id="vehicle-name">Máquina de carga</h1>
-          <p class="hero-subtitle"><span id="vehicle-description">Tu vehículo, al alcance de un gesto.</span></p>
         </div>
         <div class="hero-meta"><span class="meta-line"></span><span>CONTROL REMOTO<br><strong>Hecho para moverse.</strong></span></div>
       </section>
@@ -49,15 +50,14 @@
           <div><span class="connection-label">Amazon RDS</span><span class="connection-value"><i class="status-dot" aria-hidden="true"></i><span data-status-text>Sin verificar</span></span></div>
         </div>
       </section>
-      <p class="connection-note">WSS indica la conexión de esta página. API comprueba el servicio de salud, no cada operación ni el movimiento físico.</p>
 
       <details class="session-panel glass-panel" id="session-panel">
-        <summary><span class="summary-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10V7a4 4 0 0 1 8 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg>Acceso de control</span><span id="session-status">Introduce tu clave para operar</span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
+        <summary><span class="summary-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10V7a4 4 0 0 1 8 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg>Acceso de control</span><span class="session-indicator" id="session-indicator" data-state="empty" role="status"><i class="status-dot" aria-hidden="true"></i><span id="session-status">Sin clave</span></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
         <form id="session-form" class="session-content">
-          <div class="session-input"><label for="api-key" class="form-label">Clave de control</label><input id="api-key" class="form-control" type="password" autocomplete="off" placeholder="Pega únicamente el valor de tu clave" spellcheck="false" required disabled><p>Se usa solo en esta sesión y se elimina al recargar. Al cargarla, el campo se vacía; confirma el aviso de abajo.</p></div>
+          <div class="session-input"><label for="api-key" class="form-label">Clave de control</label><input id="api-key" class="form-control" type="password" autocomplete="off" placeholder="Pega tu clave" spellcheck="false" required disabled aria-describedby="session-status session-feedback"></div>
           <div class="session-actions"><button id="session-save" class="btn btn-mint" type="submit" disabled>Activar control</button><button id="session-clear" class="btn btn-outline-soft" type="button" disabled>Quitar clave</button></div>
         </form>
-        <p id="session-feedback" class="session-feedback" role="status" aria-live="polite">La página está iniciando. Si este aviso permanece, pulsa Ctrl+F5 y comprueba que usaste el servidor local indicado en la guía.</p>
+        <p id="session-feedback" class="session-feedback" role="status" aria-live="polite">Cargando controles…</p>
       </details>
 
       <div class="control-layout">
@@ -88,7 +88,6 @@
               <button class="extra-control" type="button" data-placeholder="true" disabled><span class="extra-control-symbol" aria-hidden="true">☼</span><span>Luces</span><small>Catálogo pendiente</small></button>
               <button class="extra-control" type="button" data-placeholder="true" disabled><span class="extra-control-symbol" aria-hidden="true">♪</span><span>Sonido</span><small>Catálogo pendiente</small></button>
             </div>
-            <p class="extras-note">Caja: un pulso por toque. Luces y sonido: alternar. El evento confirma la orden, no su estado físico.</p>
           </section>
 
           <section class="glass-panel demo-panel" aria-labelledby="demo-heading">
@@ -97,7 +96,6 @@
             <select id="demo-select" class="form-select" disabled><option value="">Cargando recorridos…</option></select>
             <p id="demo-description" class="demo-description">Selecciona una DEMO para consultar su secuencia.</p>
             <div class="demo-actions"><button id="demo-start" class="btn btn-mint" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>Iniciar DEMO</button><button id="demo-cancel" class="btn btn-outline-soft" type="button" disabled>Cancelar</button></div>
-            <p class="demo-note">Los pasos y los tiempos los ejecuta el servidor.</p>
           </section>
         </div>
       </div>
@@ -110,9 +108,8 @@
           <div class="evidence-item"><span class="evidence-number">02</span><div><h3>Respuesta API</h3><p id="action-http">Pendiente</p></div></div>
           <div class="evidence-item"><span class="evidence-number">03</span><div><h3>Evento WebSocket</h3><p id="action-event">Pendiente</p></div></div>
         </div>
-        <p class="evidence-note">La aceptación de una orden y su evento confirman comunicación con el servidor, no la ejecución física.</p>
       </section>
-      <div class="integration-info"><span>Conectado a tu arquitectura en AWS</span><a id="api-url" href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Abrir documentación de la API <span aria-hidden="true">↗</span></a></div>
+      <div class="integration-info"><a id="api-url" href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Swagger UI ↗</a></div>
     </main>
     <footer class="app-footer"><span class="footer-mark" aria-hidden="true">C / IoT</span><div class="footer-credits"><p id="developer-credit">Desarrollado por Amador Ramírez Jesús Gabriel · 2026</p><p id="academic-credit">Soluciones IoT · Profesor: Víctor Manuel Pinedo Fernández</p></div><span class="footer-caption">APLICACIÓN DE CONTROL</span></footer>
   </div>

@@ -61,7 +61,7 @@ export class ControlController {
     try {
       const result = await operation;
       this.validateMovement(result, command);
-      if (revision === this.revision) this.state.update({ phase: 'idle', authError: null, http: 'Aceptado por API · HTTP 200',
+      if (revision === this.revision) this.state.update({ phase: 'idle', authError: null, authValidated: true, http: 'Aceptado por API · HTTP 200',
         message: 'Orden aceptada. Comprueba su evento WSS.', tone: 'success' });
     } catch (error) {
       if (revision === this.revision) {
@@ -101,7 +101,7 @@ export class ControlController {
       try {
         const result = await operation;
         if (result?.id_demo !== id || result?.id_vehiculo !== this.vehicleId) throw new Error('Respuesta de DEMO inesperada.');
-        if (revision === this.revision) this.state.update({ authError: null, http: 'Aceptado por API · HTTP 202',
+        if (revision === this.revision) this.state.update({ authError: null, authValidated: true, http: 'Aceptado por API · HTTP 202',
           ...(this.demoId === id ? { message: 'DEMO aceptada; la secuencia la ejecuta el servidor.', tone: 'success' } : {}) });
       } catch (error) {
         if (revision === this.revision) {
@@ -161,8 +161,8 @@ export class ControlController {
       this.validateMovement(result, command);
       if (revision === this.revision) {
         this.demoId = null;
-        this.state.update({ phase: 'idle', authError: null, commandId: null, demoId: null, demoProgress: demoId ? 'DEMO detenida. Puedes iniciar otro recorrido.' : '', http: 'DETENER aceptado · HTTP 200',
-          message: 'Detención aceptada por la API. No equivale a confirmación física.', tone: 'success' });
+        this.state.update({ phase: 'idle', authError: null, authValidated: true, commandId: null, demoId: null, demoProgress: demoId ? 'DEMO detenida. Puedes iniciar otro recorrido.' : '', http: 'DETENER aceptado · HTTP 200',
+          message: 'DETENER aceptado por la API.', tone: 'success' });
       }
       return true;
     })().catch(error => {
@@ -232,6 +232,6 @@ export class ControlController {
     const message = error?.message || 'No se pudo completar la operación.';
     const phase = ['uncertain', 'stopping', 'demo'].includes(this.state.value.phase) ? this.state.value.phase : 'idle';
     this.state.update({ phase, tone: 'error', http: error.status ? `Error HTTP ${error.status}` : 'Sin confirmación HTTP', message,
-      ...([401, 403].includes(error.status) ? { authError: error.status } : {}) });
+      ...([401, 403].includes(error.status) ? { authError: error.status, authValidated: false } : {}) });
   }
 }
