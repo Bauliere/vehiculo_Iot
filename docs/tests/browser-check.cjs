@@ -48,6 +48,9 @@ let activePage;
       else if(path.endsWith('/demos/1/movimientos'))body=[{orden:1,id_comando:1,duracion_ms:500,pausa_ms:500},{orden:2,id_comando:9,duracion_ms:100,pausa_ms:0}];
       else {status=404;body={detail:'No existe'};}
     } else {
+      if(req.headers()['x-api-key']==='clave-incorrecta-prueba'){
+        await route.fulfill({status:401,headers,contentType:'application/json',body:JSON.stringify({detail:'Clave API inválida.'})});return;
+      }
       assert.equal(req.headers()['x-api-key'],'prueba-sin-valor-real');
       if(path==='/vehiculos/1/movimientos'){
         const commandId=req.postDataJSON().id_comando;
@@ -138,6 +141,28 @@ let activePage;
   assert.equal((await page.request.get(new URL(favicon,url).href)).status(),200);
   assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
   assert.match(await page.locator('#academic-credit').innerText(),/Soluciones IoT · Profesor: Víctor Manuel Pinedo Fernández/);
+  await page.locator('#session-form').evaluate(el=>el.closest('details')?.setAttribute('open',''));
+  await page.locator('#api-key').fill('clave-incorrecta-prueba');
+  await page.locator('#session-save').click();
+  await page.locator('#session-form').evaluate(el=>el.closest('details')?.removeAttribute('open'));
+  await page.locator('#stop-button').click();
+  await page.waitForFunction(()=>document.getElementById('action-message').textContent.includes('HTTP 401'));
+  assert.match(await page.locator('#session-status').innerText(),/Clave rechazada · HTTP 401/);
+  assert.match(await page.locator('#session-feedback').innerText(),/Local y Pages usan sesiones independientes/);
+  assert.equal(await page.locator('#session-panel').evaluate(el=>el.open),true);
+  assert.equal(await page.locator('#api-key').isEnabled(),true);
+  assert.equal(await page.locator('#stop-button').isEnabled(),true);
+  assert.equal(await page.locator('#joystick').getAttribute('aria-disabled'),'true');
+  assert.match(await page.locator('#rds-status').innerText(),/Disponible/);
+  const acceptedBeforeKeyChange=calls.length;
+  await page.locator('#api-key').fill('prueba-sin-valor-real');
+  await page.locator('#session-save').click();
+  assert.equal(await page.locator('#joystick').getAttribute('aria-disabled'),'true');
+  assert.equal(calls.length,acceptedBeforeKeyChange,'Cambiar la clave no envía órdenes');
+  await page.locator('#stop-button').click();
+  await page.waitForFunction(()=>document.getElementById('action-http').textContent==='DETENER aceptado · HTTP 200');
+  await page.waitForFunction(()=>document.getElementById('joystick').getAttribute('aria-disabled')==='false');
+  assert.deepEqual(calls.slice(acceptedBeforeKeyChange),[9],'La recuperación solo envía DETENER');
   apiOnline=false;
   for(const s of sockets)s.close({code:1001,reason:'Prueba de desconexión'});
   await page.locator('#refresh-button').click();await page.waitForTimeout(200);

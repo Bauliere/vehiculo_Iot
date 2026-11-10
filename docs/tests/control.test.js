@@ -114,3 +114,35 @@ test('un 409 de DEMO externa cancela la selección antes de reintentar DETENER',
   assert.equal(await control.stop(),true);
   assert.deepEqual(calls,['conflict','cancel:4','move:9']);
 });
+
+test('401 y 403 en DETENER explican la credencial rechazada y permiten recuperar con otra parada', async () => {
+  for (const status of [401, 403]) {
+    const { control, api, state, calls } = setup();
+    const originalMove = api.move;
+    api.move = async () => { throw Object.assign(new Error('Credencial rechazada'), { status }); };
+    assert.equal(await control.stop(), false);
+    assert.equal(state.value.authError, status);
+    assert.equal(state.value.phase, 'uncertain');
+    assert.match(state.value.message, new RegExp(`HTTP ${status}`));
+    assert.doesNotMatch(state.value.message, /Revisa conexión/);
+    // Sustituir la clave no ejecuta ni repite un movimiento.
+    state.update({ authError: null });
+    await send(control, 1);
+    assert.deepEqual(calls, []);
+    api.move = originalMove;
+    assert.equal(await control.stop(), true);
+    assert.equal(state.value.authError, null);
+    assert.equal(state.value.phase, 'idle');
+    assert.deepEqual(calls, ['move:9']);
+  }
+});
+
+test('un evento final de DEMO no desbloquea una parada que la API rechazó', async () => {
+  const { control, api, state } = setup();
+  control.demoId = 4;
+  api.cancelDemo = async () => { throw Object.assign(new Error('Clave rechazada'), { status: 401 }); };
+  await control.stop();
+  control.handleEvent({ tipo: 'demo_fin', id_vehiculo: 1, id_demo: 4, timestamp: new Date().toISOString() });
+  assert.equal(state.value.phase, 'uncertain');
+  assert.equal(state.value.authError, 401);
+});

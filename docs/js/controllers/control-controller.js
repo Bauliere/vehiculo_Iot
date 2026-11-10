@@ -17,6 +17,7 @@ export class ControlController {
 
   permitted() {
     if (!this.api.hasKey()) throw new Error('Introduce la clave en Acceso de control.');
+    if (this.state.value.authError) throw new Error('La API rechazó la clave. Sustitúyela en Acceso de control.');
     if (!this.canOperate()) throw new Error('Espera a que la API y WebSocket estén disponibles.');
   }
 
@@ -60,7 +61,7 @@ export class ControlController {
     try {
       const result = await operation;
       this.validateMovement(result, command);
-      if (revision === this.revision) this.state.update({ phase: 'idle', http: 'Aceptado por API · HTTP 200',
+      if (revision === this.revision) this.state.update({ phase: 'idle', authError: null, http: 'Aceptado por API · HTTP 200',
         message: 'Orden aceptada. Comprueba su evento WSS.', tone: 'success' });
     } catch (error) {
       if (revision === this.revision) {
@@ -100,7 +101,7 @@ export class ControlController {
       try {
         const result = await operation;
         if (result?.id_demo !== id || result?.id_vehiculo !== this.vehicleId) throw new Error('Respuesta de DEMO inesperada.');
-        if (revision === this.revision) this.state.update({ http: 'Aceptado por API · HTTP 202',
+        if (revision === this.revision) this.state.update({ authError: null, http: 'Aceptado por API · HTTP 202',
           ...(this.demoId === id ? { message: 'DEMO aceptada; la secuencia la ejecuta el servidor.', tone: 'success' } : {}) });
       } catch (error) {
         if (revision === this.revision) {
@@ -160,12 +161,20 @@ export class ControlController {
       this.validateMovement(result, command);
       if (revision === this.revision) {
         this.demoId = null;
-        this.state.update({ phase: 'idle', commandId: null, demoId: null, demoProgress: demoId ? 'DEMO detenida. Puedes iniciar otro recorrido.' : '', http: 'DETENER aceptado · HTTP 200',
+        this.state.update({ phase: 'idle', authError: null, commandId: null, demoId: null, demoProgress: demoId ? 'DEMO detenida. Puedes iniciar otro recorrido.' : '', http: 'DETENER aceptado · HTTP 200',
           message: 'Detención aceptada por la API. No equivale a confirmación física.', tone: 'success' });
       }
       return true;
     })().catch(error => {
-      if (revision === this.revision) { this.error(error); this.state.update({ phase: 'uncertain', message: 'No se pudo confirmar DETENER. Revisa conexión y vuelve a intentarlo.' }); }
+      if (revision === this.revision) {
+        this.error(error);
+        const reason = error.status === 401
+          ? 'La API rechazó la clave (HTTP 401). Sustitúyela en Acceso de control y vuelve a pulsar DETENER.'
+          : error.status === 403
+            ? 'La clave no tiene permiso (HTTP 403). Usa una clave de control autorizada y vuelve a pulsar DETENER.'
+            : `${error.message || 'No hubo respuesta válida de la API.'} Vuelve a pulsar DETENER.`;
+        this.state.update({ phase: 'uncertain', message: `No se pudo confirmar DETENER. ${reason}` });
+      }
       return false;
     }).finally(() => {
       this.stopPromise = null;
@@ -183,7 +192,7 @@ export class ControlController {
     this.lastEventTime = time;
     this.lastEventSignature = signature;
     if (event.tipo === 'estado_inicial') return; // Informativo; nunca repetir el último movimiento.
-    const stopping = this.state.value.phase === 'stopping';
+    const stopping = ['stopping', 'uncertain'].includes(this.state.value.phase);
     if (stopping && ['demo_inicio', 'demo_movimiento'].includes(event.tipo) && Number.isInteger(event.id_demo) && event.id_demo > 0) {
       // Recordar qué cancelar sin permitir que un evento reactive la vista durante STOP.
       this.demoId = event.id_demo;
@@ -222,6 +231,7 @@ export class ControlController {
   error(error) {
     const message = error?.message || 'No se pudo completar la operación.';
     const phase = ['uncertain', 'stopping', 'demo'].includes(this.state.value.phase) ? this.state.value.phase : 'idle';
-    this.state.update({ phase, tone: 'error', http: error.status ? `Error HTTP ${error.status}` : 'Sin confirmación HTTP', message });
+    this.state.update({ phase, tone: 'error', http: error.status ? `Error HTTP ${error.status}` : 'Sin confirmación HTTP', message,
+      ...([401, 403].includes(error.status) ? { authError: error.status } : {}) });
   }
 }

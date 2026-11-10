@@ -64,6 +64,9 @@ test('IDs estrictos y rutas relativas impiden solicitudes con datos ambiguos', a
     await assert.rejects(api.request(path), error => error.code === 'CONFIG');
   }
   assert.throws(() => api.setKey('bad\r\nHeader: value'), ApiError);
+  for (const key of ['API_CONTROL_KEY=example', 'API_ADMIN_KEY=example', '"example"', "'example'", '`example`']) {
+    assert.throws(() => api.setKey(key), error => error.code === 'VALIDATION' && error.message.includes('solo el valor'));
+  }
 });
 
 test('HTTPS y WSS obligatorios salvo servidor de desarrollo local', () => {

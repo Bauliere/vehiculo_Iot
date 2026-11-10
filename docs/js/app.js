@@ -23,7 +23,7 @@ class ControlApplication {
     this.demoGeneration = 0;
     this.sessionNotice = '';
     this.controller = new ControlController(this.api, CONFIG.vehicleId, this.catalog, this.state, {
-      canOperate: () => this.ready && this.apiAvailable && this.wsConnected,
+      canOperate: () => this.ready && this.apiAvailable && this.wsConnected && !this.state.value.authError,
       onNeutral: () => this.joystick?.reset(),
     });
     this.joystick = new Joystick(this.view.get('joystick'), {
@@ -60,7 +60,7 @@ class ControlApplication {
     });
     this.view.get('session-form').addEventListener('submit', event => {
       event.preventDefault();
-      if (this.controller.inFlight || this.controller.demoId || this.controller.stopPromise) {
+      if (this.controller.inFlight || this.controller.stopPromise || (this.controller.demoId && !this.state.value.authError)) {
         this.sessionNotice = 'Primero detén la operación para cambiar de clave.';
         this.state.update({ message: 'Primero detén la operación para cambiar de clave.', tone: 'error' });
         return;
@@ -70,7 +70,10 @@ class ControlApplication {
         this.view.get('api-key').value = '';
         this.sessionNotice = '';
         this.view.text('session-status', this.api.hasKey() ? 'Clave cargada · Pendiente de validar' : 'Sin clave de control.');
-        this.state.update({ message: this.api.hasKey() ? 'Sesión preparada. Elige un control cuando la conexión esté disponible.' : 'Introduce una clave para controlar.', tone: 'neutral' });
+        const needsStop = this.state.value.phase === 'uncertain' || this.controller.demoId !== null;
+        this.state.update({ authError: null, message: this.api.hasKey()
+          ? needsStop ? 'Clave actualizada. Pulsa DETENER para confirmar la parada antes de continuar.' : 'Sesión preparada. Elige un control cuando la conexión esté disponible.'
+          : 'Introduce una clave para controlar.', tone: 'neutral' });
       } catch (error) { this.sessionNotice = error.message; this.controller.error(error); }
       this.updateControls();
     });
@@ -80,6 +83,7 @@ class ControlApplication {
       }
       this.api.setKey('');
       this.sessionNotice = '';
+      this.state.update({ authError: null });
       this.view.get('api-key').value = '';
       this.view.text('session-status', 'Clave eliminada de esta pestaña.');
       this.updateControls();
@@ -176,10 +180,11 @@ class ControlApplication {
     const phase = this.state.value.phase;
     const demo = this.controller.demoId !== null;
     const uncertain = phase === 'uncertain';
-    const enabled = this.ready && this.api.hasKey() && this.apiAvailable && this.wsConnected && !demo && !uncertain && phase !== 'stopping';
+    const authError = this.state.value.authError;
+    const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo && !uncertain && phase !== 'stopping';
     const allDirections = ['forward', 'backward', 'left', 'right'].every(name => this.catalog.direction(name));
     const crossingNeutral = this.controller.keepGestureDuringStop && phase === 'stopping' &&
-      this.ready && this.api.hasKey() && this.apiAvailable && this.wsConnected && !demo;
+      this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo;
     this.joystick.setEnabled((enabled || crossingNeutral) && allDirections);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
       hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain });
@@ -193,6 +198,11 @@ class ControlApplication {
     let access = 'Introduce tu clave y pulsa Activar control.';
     if (this.api.hasKey()) {
       access = 'Clave cargada en esta pestaña. El campo se vació para ocultarla. La API comprobará sus permisos al enviar una orden.';
+    }
+    if (authError) {
+      this.view.text('session-status', `Clave rechazada · HTTP ${authError}`);
+      this.view.get('session-panel').open = true;
+      access = `La API rechazó la clave de esta pestaña (HTTP ${authError}). Pega el valor vigente de API_CONTROL_KEY del servidor, pulsa Activar control y después DETENER. Local y Pages usan sesiones independientes.`;
     }
     this.view.text('session-feedback', this.sessionNotice || `${access}${blocked.length ? ` Controles bloqueados: ${blocked.join('; ')}.` : this.api.hasKey() ? ' Controles disponibles.' : ''}`);
   }

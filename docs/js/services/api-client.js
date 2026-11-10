@@ -15,7 +15,11 @@ export class ApiClient {
     if (typeof value !== 'string' || /[\r\n]/.test(value) || value.length > 2048) {
       throw new ApiError('La clave de control tiene un formato inválido.', { code: 'VALIDATION' });
     }
-    this.#key = value.trim();
+    const key = value.trim();
+    if (/^(API_(?:ADMIN|CONTROL)_KEY\s*=|["'`])/.test(key)) {
+      throw new ApiError('Pega solo el valor de la clave, sin API_CONTROL_KEY=, API_ADMIN_KEY= ni comillas.', { code: 'VALIDATION' });
+    }
+    this.#key = key;
   }
 
   hasKey() { return this.#key.length > 0; }
