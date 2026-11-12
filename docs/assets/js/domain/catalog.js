@@ -5,15 +5,15 @@ const DIRECTIONS = Object.freeze({
   right: 'GIRAR_DERECHA', stop: 'DETENER',
 });
 const LABELS = Object.freeze({
-  AVANZAR: 'Avanzar', RETROCEDER: 'Retroceder', GIRAR_IZQUIERDA: 'Izquierda',
-  GIRAR_DERECHA: 'Derecha', SUBIR_CAJA: 'Subir caja', BAJAR_CAJA: 'Bajar caja',
+  AVANZAR: 'Avanzar', RETROCEDER: 'Retroceder', GIRAR_IZQUIERDA: 'Girar a la izquierda',
+  GIRAR_DERECHA: 'Girar a la derecha', SUBIR_CAJA: 'Subir caja', BAJAR_CAJA: 'Bajar caja',
   ALTERNAR_LUCES: 'Luces', ALTERNAR_SONIDO: 'Sonido', DETENER: 'Detener',
 });
 
 export function commandLabel(command) {
   const name = typeof command === 'string' ? command : command?.nombre;
   if (typeof name !== 'string') return 'Comando';
-  return LABELS[name.trim().toUpperCase()] ?? name.replaceAll('_', ' ');
+  return LABELS[name.trim().toUpperCase()] ?? name.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 }
 
 /** Resuelve IDs reales del catálogo; un código no sustituye al id_comando. */

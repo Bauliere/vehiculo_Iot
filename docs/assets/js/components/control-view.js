@@ -17,24 +17,28 @@ export class ControlView {
   commands(commands, onCommand) {
     const container = this.get('extra-controls');
     container.replaceChildren();
-    for (const command of commands) {
+    for (const command of commands.filter(command => !['SUBIR_CAJA', 'BAJAR_CAJA'].includes(command.nombre))) {
       const button = this.document.createElement('button');
       button.type = 'button';
       button.className = 'extra-control';
       button.dataset.commandId = command.id_comando;
+      button.dataset.aux = command.nombre;
       button.disabled = true;
-      const symbol = this.document.createElement('span');
-      symbol.className = 'extra-control-symbol';
+      const symbol = this.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       symbol.setAttribute('aria-hidden', 'true');
-      symbol.textContent = ({ SUBIR_CAJA: '↥', BAJAR_CAJA: '↧', ALTERNAR_LUCES: '☼', ALTERNAR_SONIDO: '♪' })[command.nombre] || '◇';
+      const icon = this.document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      icon.setAttribute('href', command.nombre === 'ALTERNAR_SONIDO' ? '#icon-sound' : '#icon-light');
+      symbol.append(icon);
       const label = this.document.createElement('span');
       label.textContent = commandLabel(command);
       const description = this.document.createElement('small');
-      description.textContent = command.nombre.startsWith('ALTERNAR_') ? 'Alternar' : 'Un pulso';
+      description.textContent = 'Apagado';
       description.className = 'command-feedback';
-      button.dataset.idleLabel = description.textContent;
-      button.setAttribute('aria-label', `${commandLabel(command)}: ${description.textContent.toLowerCase()}`);
-      button.append(symbol, label, description);
+      button.setAttribute('aria-label', commandLabel(command));
+      const led = this.document.createElement('i');
+      led.className = 'aux-led status-dot';
+      led.setAttribute('aria-hidden', 'true');
+      button.append(symbol, label, description, led);
       button.addEventListener('click', () => onCommand(command.id_comando));
       container.append(button);
     }
@@ -67,17 +71,6 @@ export class ControlView {
       button.dataset.active = String(active);
       button.dataset.phase = active ? state.phase : 'idle';
       button.setAttribute('aria-busy', String(active && state.phase === 'sending'));
-      const feedback = button.querySelector('.command-feedback');
-      let label = button.dataset.idleLabel;
-      let status = 'idle';
-      if (active) {
-        if (state.tone === 'error') { label = 'Sin confirmar'; status = 'error'; }
-        else if (!['Esperando evento', 'Sin evento de acción'].includes(state.event)) { label = 'Evento recibido'; status = 'received'; }
-        else if (state.phase === 'sending') { label = 'Enviando…'; status = 'sending'; }
-        else if (state.http.includes('HTTP 200')) { label = 'Aceptado por API'; status = 'accepted'; }
-      }
-      button.dataset.feedback = status;
-      if (feedback) feedback.textContent = label;
     }
   }
   availability({ enabled, pending, demo, hasKey, ready, selectedDemo, uncertain }) {

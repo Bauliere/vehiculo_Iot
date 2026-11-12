@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ApiClient } from '../js/services/api-client.js';
-import { HealthService } from '../js/services/health-service.js';
-import { SocketClient } from '../js/services/socket-client.js';
-import { Catalog, commandLabel } from '../js/domain/catalog.js';
-import { ApiError, validateServiceUrl } from '../js/utils/errors.js';
+import { ApiClient } from '../assets/js/services/api-client.js';
+import { HealthService } from '../assets/js/services/health-service.js';
+import { SocketClient } from '../assets/js/services/socket-client.js';
+import { Catalog, commandLabel } from '../assets/js/domain/catalog.js';
+import { ApiError, validateServiceUrl } from '../assets/js/utils/errors.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json' },

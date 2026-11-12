@@ -19,7 +19,7 @@ class ServidorControl(SimpleHTTPRequestHandler):
     }
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(Path(__file__).resolve().parent), **kwargs)
+        super().__init__(*args, directory=str(Path(__file__).resolve().parent.parent), **kwargs)
 
     def end_headers(self):
         # Al trabajar localmente, una recarga debe traer el código actualizado.
@@ -48,3 +48,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

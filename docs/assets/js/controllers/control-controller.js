@@ -1,3 +1,5 @@
+import { commandLabel } from '../domain/catalog.js';
+
 /** Coordina órdenes, DEMO y parada. Un resultado antiguo nunca cambia la acción actual. */
 export class ControlController {
   constructor(api, vehicleId, catalog, state, { canOperate = () => true, onNeutral = () => {} } = {}) {
@@ -16,8 +18,8 @@ export class ControlController {
   }
 
   permitted() {
-    if (!this.api.hasKey()) throw new Error('Introduce la clave en Acceso de control.');
-    if (this.state.value.authError) throw new Error('La API rechazó la clave. Sustitúyela en Acceso de control.');
+    if (!this.api.hasKey()) throw new Error('La sesión de control todavía no está disponible.');
+    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Pulsa Reconectar en Ajustes.');
     if (!this.canOperate()) throw new Error('Espera a que la API y WebSocket estén disponibles.');
   }
 
@@ -55,7 +57,7 @@ export class ControlController {
     const command = this.pending;
     this.pending = null;
     try { this.permitted(); } catch (error) { this.error(error); return; }
-    const revision = this.newIntent(command, command.nombre.replaceAll('_', ' '));
+    const revision = this.newIntent(command, commandLabel(command));
     const operation = this.api.move(this.vehicleId, command.id_comando);
     this.inFlight = operation;
     try {
@@ -123,7 +125,7 @@ export class ControlController {
     if (!this.stopPromise) this.keepGestureDuringStop = keepGesture;
     else if (!keepGesture) this.keepGestureDuringStop = false;
     if (this.stopPromise) return this.stopPromise;
-    if (!this.api.hasKey()) { this.error(new Error('Se necesita una clave de control para solicitar DETENER.')); return Promise.resolve(false); }
+    if (!this.api.hasKey()) { this.error(new Error('No hay sesión de control para solicitar DETENER.')); return Promise.resolve(false); }
     const command = this.catalog.direction('stop');
     if (!command) { this.error(new Error('No se encontró DETENER en el catálogo. Vuelve a comprobar la conexión.')); return Promise.resolve(false); }
     const preceding = this.inFlight;
@@ -169,9 +171,9 @@ export class ControlController {
       if (revision === this.revision) {
         this.error(error);
         const reason = error.status === 401
-          ? 'La API rechazó la clave (HTTP 401). Sustitúyela en Acceso de control y vuelve a pulsar DETENER.'
+          ? 'La API rechazó la sesión (HTTP 401). Pulsa Reconectar en Ajustes y vuelve a pulsar DETENER.'
           : error.status === 403
-            ? 'La clave no tiene permiso (HTTP 403). Usa una clave de control autorizada y vuelve a pulsar DETENER.'
+            ? 'La sesión no tiene permiso (HTTP 403). Revisa la configuración del servidor y vuelve a pulsar DETENER.'
             : `${error.message || 'No hubo respuesta válida de la API.'} Vuelve a pulsar DETENER.`;
         this.state.update({ phase: 'uncertain', message: `No se pudo confirmar DETENER. ${reason}` });
       }
@@ -203,24 +205,24 @@ export class ControlController {
       this.onNeutral();
       this.demoId = event.id_demo;
       this.state.update({ phase: 'demo', demoId: event.id_demo, demoProgress: `DEMO ${event.id_demo} · ${event.total_movimientos ?? 'N'} pasos`,
-        event: `demo_inicio · ${event.timestamp}`, message: 'DEMO en ejecución en el servidor.' });
+        event: `Inicio de DEMO · ${event.timestamp}`, message: 'DEMO en ejecución en el servidor.' });
     } else if (event.tipo === 'demo_movimiento' && Number.isInteger(event.id_demo) && event.id_demo > 0 &&
       Number.isInteger(event.orden) && event.orden > 0 && Number.isInteger(event.duracion_ms) && Number.isInteger(event.pausa_ms) && !stopping) {
       this.pending = null;
       this.onNeutral();
       this.demoId = event.id_demo;
-      this.state.update({ phase: 'demo', demoId: event.id_demo, demoProgress: `Paso ${event.orden} · ${event.comando} · ${event.duracion_ms} ms + ${event.pausa_ms} ms`,
-        event: `demo_movimiento · ${event.timestamp}`, message: `Evento recibido: ${event.comando}.` });
+      this.state.update({ phase: 'demo', demoId: event.id_demo, demoProgress: `Paso ${event.orden} · ${commandLabel(event.comando)}`,
+        event: `Paso de DEMO · ${event.timestamp}`, message: `Evento recibido: ${commandLabel(event.comando)}.` });
     } else if (['demo_fin', 'demo_cancelada', 'demo_error'].includes(event.tipo) && event.id_demo === this.demoId) {
       this.demoId = null;
       if (!stopping) this.state.update({ phase: event.tipo === 'demo_error' ? 'uncertain' : 'idle', demoId: null, demoProgress: event.tipo === 'demo_error' ? 'Error en DEMO. Solicita DETENER y revisa el servidor.' : 'DEMO terminada',
-        event: `${event.tipo} · ${event.timestamp}`, message: `Evento recibido: ${event.tipo}.`, tone: event.tipo === 'demo_error' ? 'error' : 'success' });
+        event: `${commandLabel(event.tipo)} · ${event.timestamp}`, message: `Evento recibido: ${commandLabel(event.tipo)}.`, tone: event.tipo === 'demo_error' ? 'error' : 'success' });
     } else if (event.tipo === 'movimiento_individual' && this.intent &&
       event.id_comando === this.intent.id && event.codigo === this.intent.code && event.comando === this.intent.name &&
       time >= this.intent.since - 5000) {
       // API sin request_id: correspondencia temporal, no prueba de autoría entre varios clientes.
       this.intent.event = event;
-      this.state.update({ event: `${event.comando} · código ${event.codigo} · ${event.timestamp}` });
+      this.state.update({ event: `${commandLabel(event.comando)} · código ${event.codigo} · ${event.timestamp}` });
     }
   }
 

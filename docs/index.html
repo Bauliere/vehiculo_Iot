@@ -1,117 +1,67 @@
 <!doctype html>
-<html lang="es" data-theme="forest">
+<html lang="es" data-theme="forest" data-view="control">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0a211c">
-  <meta name="description" content="Control web de la máquina de carga IoT. Movimientos, recorridos y conexión con AWS.">
-  <title>Máquina de carga · Control IoT</title>
-  <link rel="icon" href="./assets/favicon.ico" type="image/x-icon">
-  <link rel="stylesheet" href="./assets/vendor/bootstrap.min.css">
-  <link rel="stylesheet" href="./css/styles.css">
-  <script type="module" src="./js/app.js"></script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#071b17">
+<meta name="description" content="Control y monitoreo de la máquina de carga IoT. Dirección, caja, luces, sonido y movimientos en tiempo real.">
+<title>CONTROL / IoT — Máquina de carga</title>
+<link rel="icon" href="./assets/images/favicon.ico" type="image/x-icon"><link rel="stylesheet" href="./assets/vendor/bootstrap.min.css"><link rel="stylesheet" href="./assets/css/styles.css"><script type="module" src="./assets/js/app.js"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main-control">Ir a los controles</a>
-  <div class="ambient ambient-one" aria-hidden="true"></div>
-  <div class="ambient ambient-two" aria-hidden="true"></div>
-  <div class="app-shell container">
-    <header class="app-header">
-      <div class="brand-group">
-        <button class="theme-button" id="theme-button" type="button" aria-label="Cambiar paleta de colores" title="Cambiar paleta de colores">
-          <img src="./assets/fausto.png" alt="" width="54" height="54">
-          <span class="visually-hidden" id="theme-name" role="status">Bosque</span>
-        </button>
-        <a class="brand" href="./" aria-label="Control IoT, inicio">CONTROL<span class="brand-light"> / IoT</span></a>
-      </div>
-      <button class="icon-button" id="refresh-button" type="button" aria-label="Comprobar conexiones y actualizar datos" title="Actualizar conexión"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10a8 8 0 1 0-2.3 7.6M20 4v6h-6"/></svg></button>
-    </header>
+<a class="skip-link" href="#main-control">Ir a los controles</a>
+<svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+<symbol id="icon-light" viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4M8 13a6 6 0 1 1 8 0c-1 1-1 2-1 3H9c0-1 0-2-1-3M12 1v1M2 10h1m18 0h1M4 3l1 1m14 0 1-1"/></symbol>
+<symbol id="icon-sound" viewBox="0 0 24 24"><path d="m11 4-6 5H2v6h3l6 5zm4 4a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+<symbol id="icon-demo" viewBox="0 0 24 24"><path d="m9 6 9 6-9 6zM5 4v16"/></symbol>
+<symbol id="icon-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></symbol>
+<symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+<symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2.3 7.6M20 4v6h-6"/></symbol>
+<symbol id="icon-pulse" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+</svg>
+<div class="app-shell container-fluid">
+<header class="app-header">
+<div class="brand-group"><button class="theme-button" id="theme-button" type="button" aria-label="Cambiar paleta de colores" title="Cambiar paleta"><img src="./assets/images/fausto.png" alt="" width="48" height="48"><span class="visually-hidden" id="theme-name" role="status">Bosque</span></button><a class="brand" href="./" aria-label="Control IoT, inicio">CONTROL<span> / IoT</span></a></div>
+<nav class="view-navigation" aria-label="Vistas de la aplicación"><button type="button" data-view-target="control" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8c5 0 7 13 3 13l-4-4H9l-4 4C1 20 3 7 8 7ZM7 10v4m-2-2h4m6-1h.1m3 3h.1M10 7V4h4"/></svg>Control</button><button type="button" data-view-target="monitor"><svg aria-hidden="true"><use href="#icon-pulse"/></svg>Monitoreo</button></nav>
+<button class="icon-button refresh-button" id="refresh-button" type="button" aria-label="Comprobar conexiones y actualizar datos" title="Actualizar"><svg aria-hidden="true"><use href="#icon-refresh"/></svg></button>
+</header>
+<section class="connection-strip" aria-label="Estado de los servicios" aria-live="polite">
+<div class="connection-item" id="ws-status" data-state="connecting"><i class="status-dot" aria-hidden="true"></i><span class="connection-label">WSS<span class="desktop-label"> · navegador</span></span><span data-status-text>Conectando</span></div>
+<div class="connection-item" id="api-status" data-state="checking"><i class="status-dot" aria-hidden="true"></i><span class="connection-label">API<span class="desktop-label"> AWS · 21 servicios</span></span><span data-status-text>Comprobando</span></div>
+<div class="connection-item" id="rds-status" data-state="unverified"><i class="status-dot" aria-hidden="true"></i><span class="connection-label"><span class="desktop-label">Amazon </span>RDS</span><span data-status-text>Sin verificar</span></div>
+</section>
+<main id="main-control" class="main-content">
+<section id="control-view" class="workspace" aria-label="Control del vehículo">
+<div class="pilot-workspace">
+<section class="drive-panel glass-panel" aria-labelledby="vehicle-name">
+<div class="control-topline"><div><p class="eyebrow" id="vehicle-id">VEHÍCULO 01</p><h1 id="vehicle-name">Máquina de carga</h1></div></div>
+<div class="mechanics">
+<div class="drive-module"><div class="module-heading"><h2>Dirección</h2><span class="module-rule"></span></div>
+<div class="joystick-wrap"><span class="direction-label direction-top">AVANZAR</span><span class="direction-label direction-left">IZQ.</span><span class="direction-label direction-right">DER.</span><span class="direction-label direction-bottom">RETROCEDER</span>
+<div id="joystick" class="joystick" role="group" tabindex="0" aria-label="Joystick. Arrastra o usa las flechas. Suelta para detener." aria-describedby="joystick-help" aria-disabled="true"><div class="joystick-ring" aria-hidden="true"></div><svg class="joystick-axis" viewBox="0 0 240 240" aria-hidden="true"><path d="M120 30v180M30 120h180"/><path class="axis-arrow" d="m113 42 7-7 7 7m-14 156 7 7 7-7M42 113l-7 7 7 7m156-14 7 7-7 7"/></svg><div class="joystick-stick" aria-hidden="true"><span class="stick-core"><span></span><span></span><span></span></span></div></div></div>
+<p class="joystick-feedback" id="joystick-label">En posición neutral</p><p id="joystick-help" class="control-help">Arrastra para dirigir · Suelta para detener</p></div>
+<div class="box-module"><div class="module-heading"><h2>Caja</h2><span class="module-rule"></span></div>
+<div id="box-lever" class="box-lever" role="slider" tabindex="0" aria-orientation="vertical" aria-valuemin="-1" aria-valuemax="1" aria-valuenow="0" aria-valuetext="Neutral" aria-label="Palanca de la caja. Arrastra hacia arriba para subir o hacia abajo para bajar. Suelta para detener." aria-disabled="true"><div class="lever-rail" aria-hidden="true"></div><div class="lever-position lever-up" aria-hidden="true"><span>↑</span>SUBIR</div><div class="lever-position lever-neutral" aria-hidden="true"><span></span>N</div><div class="lever-position lever-down" aria-hidden="true"><span>↓</span>BAJAR</div><div class="box-lever-stick" aria-hidden="true"><span></span><span></span><span></span></div></div>
+<p class="lever-feedback" id="box-lever-label">Neutral</p><p class="control-help">Suelta para detener</p></div></div>
+<button id="stop-button" class="stop-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>DETENER</span><small>Parada prioritaria</small></button>
+<button type="button" class="control-notice" data-view-target="monitor"><i class="status-dot" aria-hidden="true"></i><span id="control-notice">Activa tu acceso para comenzar</span><span aria-hidden="true">↗</span></button>
+</section>
+<div class="control-dock" aria-label="Funciones del vehículo"><div id="extra-controls" class="extra-controls"><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-light"/></svg><span>Luces</span></button><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-sound"/></svg><span>Sonido</span></button></div><button class="dock-button" id="demo-open" data-open-panel="demo" type="button"><svg aria-hidden="true"><use href="#icon-demo"/></svg><span>DEMO</span></button><button class="dock-button" id="access-open" data-open-panel="session" type="button"><svg aria-hidden="true"><use href="#icon-settings"/></svg><span>Ajustes</span><i id="access-dot" class="status-dot" data-state="empty" aria-hidden="true"></i></button></div>
+</div>
+<aside class="control-sidebar" aria-label="Acceso, recorridos y actividad">
+<section id="session-card" class="glass-panel sidebar-card"><div class="panel-heading"><p class="eyebrow">CONEXIÓN AUTOMÁTICA</p><h2>Ajustes</h2></div><div class="session-indicator" id="session-indicator" data-state="pending" role="status"><i class="status-dot" aria-hidden="true"></i><span id="session-status">Conectando</span></div><p id="session-feedback" class="session-feedback" role="status">Preparando acceso al vehículo…</p><div class="session-actions"><button id="session-reconnect" class="btn btn-mint" type="button">Reconectar</button><button id="theme-cycle" class="btn btn-outline-soft" type="button">Paleta</button></div><div class="settings-credits"><p>Amador Ramírez Jesús Gabriel · 2026</p><p>Soluciones IoT</p><p>Profesor: Víctor Manuel Pinedo Fernández</p><a href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Swagger UI ↗</a></div></section>
+<section id="demo-card" class="glass-panel sidebar-card demo-panel" aria-labelledby="demo-heading"><div class="panel-heading"><h2 id="demo-heading">Recorridos DEMO</h2></div><label for="demo-select" class="form-label">DEMO disponible</label><select id="demo-select" class="form-select" disabled><option value="">Cargando recorridos…</option></select><p id="demo-description" class="demo-description">Selecciona una DEMO.</p><div class="demo-actions"><button id="demo-start" class="btn btn-mint" type="button" disabled><svg aria-hidden="true"><use href="#icon-demo"/></svg>Iniciar DEMO</button><button id="demo-cancel" class="btn btn-outline-soft" type="button" disabled>Cancelar</button></div></section>
 
-    <main id="main-control">
-      <section class="hero" aria-labelledby="vehicle-name">
-        <div>
-          <p class="eyebrow"><span class="tiny-square" aria-hidden="true"></span> PANEL DE CONTROL <span class="eyebrow-separator">/</span> <span id="vehicle-id">VEHÍCULO 01</span></p>
-          <h1 id="vehicle-name">Máquina de carga</h1>
-        </div>
-        <div class="hero-meta"><span class="meta-line"></span><span>CONTROL REMOTO<br><strong>Hecho para moverse.</strong></span></div>
-      </section>
-
-      <section class="connection-strip" aria-label="Estado de los servicios">
-        <div class="connection-item" id="ws-status" data-state="connecting">
-          <span class="connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8a14 14 0 0 1 18 0M6 12a9 9 0 0 1 12 0M9 16a4.5 4.5 0 0 1 6 0"/><circle cx="12" cy="20" r=".8"/></svg></span>
-          <div><span class="connection-label">WebSocket WSS</span><span class="connection-value"><i class="status-dot" aria-hidden="true"></i><span data-status-text>Conectando</span></span></div>
-        </div>
-        <div class="connection-item" id="api-status" data-state="checking">
-          <span class="connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M7 6.5h.1M7 17.5h.1M15 6.5h2M15 17.5h2"/></svg></span>
-          <div><span class="connection-label">API AWS · 21 servicios</span><span class="connection-value"><i class="status-dot" aria-hidden="true"></i><span data-status-text>Comprobando</span></span></div>
-        </div>
-        <div class="connection-item" id="rds-status" data-state="unverified">
-          <span class="connection-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></svg></span>
-          <div><span class="connection-label">Amazon RDS</span><span class="connection-value"><i class="status-dot" aria-hidden="true"></i><span data-status-text>Sin verificar</span></span></div>
-        </div>
-      </section>
-
-      <details class="session-panel glass-panel" id="session-panel">
-        <summary><span class="summary-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 10V7a4 4 0 0 1 8 0v3"/><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M12 14v3"/></svg>Acceso de control</span><span class="session-indicator" id="session-indicator" data-state="empty" role="status"><i class="status-dot" aria-hidden="true"></i><span id="session-status">Sin clave</span></span><span class="summary-chevron" aria-hidden="true">⌄</span></summary>
-        <form id="session-form" class="session-content">
-          <div class="session-input"><label for="api-key" class="form-label">Clave de control</label><input id="api-key" class="form-control" type="password" autocomplete="off" placeholder="Pega tu clave" spellcheck="false" required disabled aria-describedby="session-status session-feedback"></div>
-          <div class="session-actions"><button id="session-save" class="btn btn-mint" type="submit" disabled>Activar control</button><button id="session-clear" class="btn btn-outline-soft" type="button" disabled>Quitar clave</button></div>
-        </form>
-        <p id="session-feedback" class="session-feedback" role="status" aria-live="polite">Cargando controles…</p>
-      </details>
-
-      <div class="control-layout">
-        <section class="glass-panel drive-panel" aria-labelledby="drive-heading">
-          <div class="panel-heading"><div><p class="eyebrow">01 / DIRECCIÓN</p><h2 id="drive-heading">Toma el control</h2></div><span class="mode-tag">MANUAL</span></div>
-          <div class="joystick-wrap">
-            <span class="direction-label direction-top">AVANZAR</span>
-            <span class="direction-label direction-left">IZQ.</span>
-            <span class="direction-label direction-right">DER.</span>
-            <span class="direction-label direction-bottom">RETROCEDER</span>
-            <div id="joystick" class="joystick" role="group" tabindex="0" aria-label="Joystick de dirección. Arrastra o usa las flechas del teclado. Suelta para detener." aria-describedby="joystick-help" aria-disabled="true">
-              <div class="joystick-ring" aria-hidden="true"></div>
-              <svg class="joystick-axis" viewBox="0 0 240 240" aria-hidden="true"><path d="M120 38v164M38 120h164"/><path class="axis-arrow" d="m113 42 7-7 7 7m-14 156 7 7 7-7M42 113l-7 7 7 7m156-14 7 7-7 7"/></svg>
-              <div class="joystick-stick" aria-hidden="true"><span class="stick-dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
-            </div>
-          </div>
-          <div class="joystick-feedback"><span class="neutral-dot" aria-hidden="true"></span><span id="joystick-label">En posición neutral</span></div>
-          <p id="joystick-help" class="joystick-help">Arrastra para dirigir. Suelta para detener.<br><span>También puedes usar las flechas del teclado.</span></p>
-          <button id="stop-button" class="stop-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>DETENER</span><small>Acción prioritaria</small></button>
-        </section>
-
-        <div class="secondary-panels">
-          <section class="glass-panel extras-panel" aria-labelledby="extras-heading">
-            <div class="panel-heading"><div><p class="eyebrow">02 / FUNCIONES</p><h2 id="extras-heading">Más posibilidades</h2></div><svg class="section-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></div>
-            <div id="extra-controls" class="extra-controls" aria-label="Comandos adicionales">
-              <button class="extra-control" type="button" data-placeholder="true" disabled><span class="extra-control-symbol" aria-hidden="true">↥</span><span>Subir caja</span><small>Catálogo pendiente</small></button>
-              <button class="extra-control" type="button" data-placeholder="true" disabled><span class="extra-control-symbol" aria-hidden="true">↧</span><span>Bajar caja</span><small>Catálogo pendiente</small></button>
-              <button class="extra-control" type="button" data-placeholder="true" disabled><span class="extra-control-symbol" aria-hidden="true">☼</span><span>Luces</span><small>Catálogo pendiente</small></button>
-              <button class="extra-control" type="button" data-placeholder="true" disabled><span class="extra-control-symbol" aria-hidden="true">♪</span><span>Sonido</span><small>Catálogo pendiente</small></button>
-            </div>
-          </section>
-
-          <section class="glass-panel demo-panel" aria-labelledby="demo-heading">
-            <div class="panel-heading"><div><p class="eyebrow">03 / RECORRIDOS</p><h2 id="demo-heading">Una secuencia, un toque</h2></div><svg class="section-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h9a4 4 0 0 1 0 8H8a4 4 0 0 0 0 8h7"/></svg></div>
-            <label for="demo-select" class="form-label">DEMO disponible</label>
-            <select id="demo-select" class="form-select" disabled><option value="">Cargando recorridos…</option></select>
-            <p id="demo-description" class="demo-description">Selecciona una DEMO para consultar su secuencia.</p>
-            <div class="demo-actions"><button id="demo-start" class="btn btn-mint" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg>Iniciar DEMO</button><button id="demo-cancel" class="btn btn-outline-soft" type="button" disabled>Cancelar</button></div>
-          </section>
-        </div>
-      </div>
-
-      <section class="glass-panel action-panel" aria-labelledby="action-heading">
-        <div class="action-heading"><div><p class="eyebrow">RESPUESTA DE TU ÚLTIMA ACCIÓN</p><h2 id="action-heading" class="visually-hidden">Confirmaciones de la última acción</h2></div><span class="live-mark"><i aria-hidden="true"></i> EN ESTA SESIÓN</span></div>
-        <p id="action-message" role="status" aria-live="polite" data-tone="neutral">Conecta los servicios y activa el acceso para comenzar.</p>
-        <div class="evidence-grid">
-          <div class="evidence-item"><span class="evidence-number">01</span><div><h3>Solicitud</h3><p id="action-request">Sin solicitudes</p></div></div>
-          <div class="evidence-item"><span class="evidence-number">02</span><div><h3>Respuesta API</h3><p id="action-http">Pendiente</p></div></div>
-          <div class="evidence-item"><span class="evidence-number">03</span><div><h3>Evento WebSocket</h3><p id="action-event">Pendiente</p></div></div>
-        </div>
-      </section>
-      <div class="integration-info"><a id="api-url" href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Swagger UI ↗</a></div>
-    </main>
-    <footer class="app-footer"><span class="footer-mark" aria-hidden="true">C / IoT</span><div class="footer-credits"><p id="developer-credit">Desarrollado por Amador Ramírez Jesús Gabriel · 2026</p><p id="academic-credit">Soluciones IoT · Profesor: Víctor Manuel Pinedo Fernández</p></div><span class="footer-caption">APLICACIÓN DE CONTROL</span></footer>
-  </div>
+</aside>
+</section>
+<section id="monitor-view" class="monitor-workspace" aria-label="Monitoreo del vehículo" hidden>
+<div class="monitor-heading"><div><p class="eyebrow">MONITOREO EN DIRECTO</p><h1 id="monitor-vehicle">Máquina de carga</h1></div><button id="activity-open" type="button" class="icon-button" data-open-panel="activity" aria-label="Ver confirmaciones de la última acción"><svg aria-hidden="true"><use href="#icon-pulse"/></svg></button><button id="monitor-refresh" type="button" class="icon-button" aria-label="Resincronizar estado e historial"><svg aria-hidden="true"><use href="#icon-refresh"/></svg></button></div>
+<section class="latest-panel glass-panel" aria-labelledby="monitor-command"><div class="latest-label"><svg aria-hidden="true"><use href="#icon-pulse"/></svg><p class="eyebrow">ÚLTIMO MOVIMIENTO REPORTADO</p><span id="monitor-source" class="mode-tag">Sin datos</span></div><h2 id="monitor-command">Sin movimientos</h2><div class="latest-details"><span id="monitor-code">—</span><time id="monitor-date">—</time><time id="monitor-time">—</time></div><p id="monitor-state-status" role="status">Abre esta vista para consultar el estado.</p></section>
+<section class="history-panel glass-panel" aria-labelledby="history-heading"><div class="history-heading"><div><p class="eyebrow">REGISTRADOS EN RDS</p><h2 id="history-heading">Historial individual</h2></div><span class="history-count"><span id="monitor-count">0</span><span> / 10</span></span></div><p id="monitor-history-status" role="status">Sin consultar</p><div class="history-table-wrap"><table class="history-table"><thead><tr><th scope="col">#</th><th scope="col">Movimiento</th><th scope="col">Fecha</th><th scope="col">Hora</th></tr></thead><tbody id="monitor-history-body"></tbody></table></div><div class="history-pagination"><button id="history-prev" class="icon-button" type="button" aria-label="Registros anteriores">←</button><span id="history-page">Página 1 de 1</span><button id="history-next" class="icon-button" type="button" aria-label="Registros siguientes">→</button></div><p id="monitor-zone" class="time-zone">Hora de Ciudad de México · UTC−6</p></section>
+<section id="activity-card" class="glass-panel sidebar-card action-panel" aria-labelledby="action-heading"><div class="panel-heading"><p class="eyebrow">EN ESTA SESIÓN</p><h2 id="action-heading">Última acción</h2></div><p id="action-message" role="status" aria-live="polite" data-tone="neutral">Activa el acceso para comenzar.</p><div class="evidence-grid"><div><h3>Solicitud</h3><p id="action-request">Sin solicitudes</p></div><div><h3>Respuesta API</h3><p id="action-http">Pendiente</p></div><div><h3>Evento WSS</h3><p id="action-event">Pendiente</p></div></div></section>
+</section>
+</main>
+<footer class="app-footer"><div><p id="developer-credit">Desarrollado por Amador Ramírez Jesús Gabriel · 2026</p><p id="academic-credit">Soluciones IoT · Profesor: Víctor Manuel Pinedo Fernández</p></div><a id="api-url" href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Swagger UI ↗</a></footer>
+</div>
+<dialog id="control-sheet" class="control-sheet" aria-labelledby="sheet-title"><div class="sheet-heading"><h2 id="sheet-title">Acceso</h2><button id="sheet-close" type="button" class="icon-button" aria-label="Cerrar panel"><svg aria-hidden="true"><use href="#icon-close"/></svg></button></div><div id="sheet-content"></div></dialog>
+<noscript>Activa JavaScript para utilizar los controles y consultar el monitoreo.</noscript>
 </body>
 </html>

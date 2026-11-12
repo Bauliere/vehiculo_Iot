@@ -8,14 +8,35 @@ import { ControlController } from './controllers/control-controller.js';
 import { ControlView } from './components/control-view.js';
 import { Joystick } from './components/joystick.js';
 import { ThemeManager } from './components/theme-manager.js';
+import { BoxLever } from './components/box-lever.js';
+import { Navigation } from './components/navigation.js';
+import { MonitorController } from './controllers/monitor-controller.js';
+import { MonitorView } from './components/monitor-view.js';
+import { ControlFeedback } from './components/control-feedback.js';
 
 /** Punto de composición: conecta clases de dominio, servicios y componentes. */
 class ControlApplication {
   constructor() {
-    this.api = new ApiClient(CONFIG.apiBaseUrl, { timeoutMs: CONFIG.requestTimeoutMs });
+    this.api = new ApiClient(CONFIG.apiBaseUrl, { timeoutMs: CONFIG.requestTimeoutMs, automaticVehicleId: CONFIG.vehicleId });
     this.state = new ControlState();
     this.view = new ControlView(document);
     this.theme = new ThemeManager(document);
+    this.feedback = new ControlFeedback(document, CONFIG.vehicleId);
+    this.sessionLoading = false;
+    this.monitorView = new MonitorView(document);
+    this.monitor = new MonitorController(this.api, CONFIG.vehicleId, {
+      onChange: value => this.monitorView.render(value),
+    });
+    this.navigation = new Navigation(document, {
+      onView: name => {
+        if (this.joystick?.active || this.lever?.active) void this.controller.stop();
+        if (name === 'monitor') void this.monitor.enter();
+      },
+      onPanel: () => {
+        if (this.joystick?.active || this.lever?.active) void this.controller.stop();
+      },
+      onResize: () => this.resizeMonitor(),
+    });
     this.catalog = new Catalog([]);
     this.ready = false;
     this.loading = false;
@@ -26,17 +47,34 @@ class ControlApplication {
     this.sessionNotice = '';
     this.controller = new ControlController(this.api, CONFIG.vehicleId, this.catalog, this.state, {
       canOperate: () => this.ready && this.apiAvailable && this.wsConnected && !this.state.value.authError,
-      onNeutral: () => this.joystick?.reset(),
+      onNeutral: () => { this.joystick?.reset(); this.lever?.reset(); },
     });
     this.joystick = new Joystick(this.view.get('joystick'), {
-      onDirection: direction => this.controller.requestDirection(direction),
+      onDirection: direction => {
+        if (direction !== 'stop') this.lever?.reset();
+        this.controller.requestDirection(direction);
+      },
       onRelease: () => void this.controller.stop(),
     });
     this.joystick.setEnabled(false);
+    this.lever = new BoxLever(this.view.get('box-lever'), {
+      onDirection: direction => {
+        if (direction === 'stop') { void this.controller.stop({ keepGesture: true }); return; }
+        this.joystick.reset();
+        const name = direction === 'up' ? 'SUBIR_CAJA' : 'BAJAR_CAJA';
+        const command = this.catalog.all().find(item => item.nombre === name);
+        if (command) {
+          this.controller.requestCommand(command.id_comando);
+          // La palanca también acepta un toque corto; no espera el debounce del joystick.
+          void this.controller.drain();
+        }
+      },
+      onRelease: () => void this.controller.stop(),
+    });
     this.state.subscribe(value => { this.view.render(value); this.updateControls(); });
     this.socket = new SocketClient(socketUrl(), {
       onStatus: status => this.socketStatus(status),
-      onEvent: event => { this.controller.handleEvent(event); this.updateControls(); },
+      onEvent: event => { this.controller.handleEvent(event); this.monitor.handleEvent(event); this.feedback.handleEvent(event); this.updateControls(); },
       onError: message => { this.state.update({ message, tone: 'error' }); },
     });
     this.health = new HealthService(this.api, {
@@ -47,7 +85,10 @@ class ControlApplication {
 
   start() {
     this.theme.start();
-    for (const id of ['api-key', 'session-save', 'session-clear']) this.view.get(id).disabled = false;
+    this.navigation.start();
+    this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor.refresh());
+    this.view.get('session-reconnect').addEventListener('click', () => void this.connectSession(true));
+    this.view.get('theme-cycle').addEventListener('click', () => this.view.get('theme-button').click());
     this.view.text('developer-credit', `Desarrollado por ${CONFIG.author} · ${CONFIG.year}`);
     this.view.text('academic-credit', `${CONFIG.subject} · Profesor: ${CONFIG.teacher}`);
     const url = this.view.get('api-url');
@@ -55,39 +96,16 @@ class ControlApplication {
     url.href = `${CONFIG.apiBaseUrl}/docs`;
     this.view.get('stop-button').addEventListener('click', () => void this.controller.stop());
     this.view.get('demo-cancel').addEventListener('click', () => void this.controller.stop());
-    this.view.get('demo-start').addEventListener('click', () => void this.controller.startDemo(this.demoSelection));
+    this.view.get('demo-start').addEventListener('click', () => {
+      this.navigation.closePanel();
+      void this.controller.startDemo(this.demoSelection);
+    });
     this.view.get('demo-select').addEventListener('change', () => void this.selectDemo());
     this.view.get('refresh-button').addEventListener('click', () => {
       void this.health.check();
+      void this.monitor.refresh();
+      void this.connectSession(true);
       if (!this.ready) void this.loadCatalog();
-    });
-    this.view.get('session-form').addEventListener('submit', event => {
-      event.preventDefault();
-      if (this.controller.inFlight || this.controller.stopPromise || (this.controller.demoId && !this.state.value.authError)) {
-        this.sessionNotice = 'Primero detén la operación para cambiar de clave.';
-        this.state.update({ message: 'Primero detén la operación para cambiar de clave.', tone: 'error' });
-        return;
-      }
-      try {
-        this.api.setKey(this.view.get('api-key').value);
-        this.view.get('api-key').value = '';
-        this.sessionNotice = '';
-        const needsStop = this.state.value.phase === 'uncertain' || this.controller.demoId !== null;
-        this.state.update({ authError: null, authValidated: false, message: this.api.hasKey()
-          ? needsStop ? 'Clave actualizada. Pulsa DETENER para confirmar la parada antes de continuar.' : 'Sesión preparada. Elige un control cuando la conexión esté disponible.'
-          : 'Introduce una clave para controlar.', tone: 'neutral' });
-      } catch (error) { this.sessionNotice = error.message; this.controller.error(error); }
-      this.updateControls();
-    });
-    this.view.get('session-clear').addEventListener('click', async () => {
-      if (this.api.hasKey() && (this.controller.inFlight || this.controller.demoId || this.state.value.commandId)) {
-        if (!(await this.controller.stop())) return;
-      }
-      this.api.setKey('');
-      this.sessionNotice = '';
-      this.state.update({ authError: null, authValidated: false });
-      this.view.get('api-key').value = '';
-      this.updateControls();
     });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.controller.connectionLost();
@@ -98,13 +116,41 @@ class ControlApplication {
       this.controller.connectionLost();
       this.socket.stop();
       this.health.stop();
+      this.monitor.stop();
+      this.feedback.stop();
     });
     window.addEventListener('pageshow', event => {
-      if (event.persisted) { this.socket.start(); this.health.start(); }
+      if (event.persisted) { this.socket.start(); this.health.start(); void this.monitor.start(); }
     });
     this.socket.start();
     this.health.start();
     void this.loadCatalog();
+    void this.monitor.start();
+    void this.connectSession();
+  }
+
+  async connectSession(force = false) {
+    if (this.sessionLoading) return;
+    this.sessionLoading = true;
+    this.sessionNotice = '';
+    this.updateControls();
+    try {
+      await this.api.connectControl({ force });
+      this.state.update({ authError: null });
+    } catch (error) {
+      this.sessionNotice = 'Acceso automático no disponible. Revisa el servidor en Ajustes.';
+      this.view.text('session-feedback', error.status === 404 || error.status === 403
+        ? 'Activa el control público en la instancia con la guía incluida.' : error.message);
+    } finally {
+      this.sessionLoading = false;
+      this.updateControls();
+    }
+  }
+
+  resizeMonitor() {
+    const mobile = this.navigation.mobile.matches;
+    const landscape = window.innerWidth > window.innerHeight;
+    this.monitorView.setPageSize(!mobile ? 10 : landscape || window.innerHeight <= 520 ? 2 : window.innerHeight < 670 ? 3 : 5);
   }
 
   async loadCatalog() {
@@ -124,8 +170,13 @@ class ControlApplication {
       this.demos = detail.demos.filter(d => d.activo === 1 && Number.isInteger(d.id_demo) && d.id_demo > 0 && d.id_vehiculo === CONFIG.vehicleId && typeof d.nombre === 'string');
       this.view.vehicle(detail.vehiculo);
       this.view.commands(catalog.extras(), id => this.controller.requestCommand(id));
+      this.feedback.renderAux();
       this.view.demos(this.demos);
       this.ready = true;
+      if (this.demos.some(demo => demo.id_demo === 1)) {
+        this.view.get('demo-select').value = '1';
+        void this.selectDemo();
+      }
       this.state.update({ message: 'Vehículo listo.', tone: 'neutral' });
     } catch (error) {
       this.state.update({ message: error.message, tone: 'error' });
@@ -157,11 +208,13 @@ class ControlApplication {
   }
 
   socketStatus(status) {
+    this.monitor.socketStatus(status);
     const wasConnected = this.wsConnected;
     this.wsConnected = status === 'connected';
     const states = { connected: ['online', 'En línea'], connecting: ['connecting', 'Conectando'], reconnecting: ['connecting', 'Reconectando'], disconnected: ['offline', 'Desconectado'] };
     this.view.status('ws-status', ...states[status]);
     if (wasConnected && !this.wsConnected) this.controller.connectionLost();
+    if (!this.wsConnected) this.feedback.neutral();
     this.updateControls();
   }
 
@@ -174,6 +227,7 @@ class ControlApplication {
     this.view.status('rds-status', status.rds, rdsLabels[status.rds]);
     if (wasAvailable && !this.apiAvailable) this.controller.connectionLost();
     if (this.apiAvailable && !this.ready) void this.loadCatalog();
+    if (this.apiAvailable && !wasAvailable && !this.api.hasKey()) void this.connectSession();
     this.updateControls();
   }
 
@@ -187,26 +241,27 @@ class ControlApplication {
     const crossingNeutral = this.controller.keepGestureDuringStop && phase === 'stopping' &&
       this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo;
     this.joystick.setEnabled((enabled || crossingNeutral) && allDirections);
+    const boxCommands = ['SUBIR_CAJA', 'BAJAR_CAJA'].every(name => this.catalog.all().some(command => command.nombre === name));
+    this.lever?.setEnabled((enabled || crossingNeutral) && boxCommands);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
       hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain });
-    const accessState = !this.api.hasKey() ? 'empty' : authError ? 'invalid'
-      : this.state.value.authValidated ? 'valid'
-        : !this.apiAvailable || !this.wsConnected ? 'offline' : 'pending';
-    const accessLabels = { empty: 'Sin clave', pending: 'Por validar', valid: 'Validado', invalid: 'No válido', offline: 'Sin conexión' };
+    const accessState = authError ? 'invalid' : !this.apiAvailable || !this.wsConnected ? 'offline'
+      : this.api.hasKey() ? 'valid' : 'pending';
+    const labels = { invalid: 'Sin permiso', offline: 'Sin conexión', valid: 'Disponible', pending: 'Conectando' };
     this.view.get('session-indicator').dataset.state = accessState;
-    this.view.text('session-status', accessLabels[accessState]);
-    if (authError) this.view.get('session-panel').open = true;
-    const feedback = this.sessionNotice || (authError ? `HTTP ${authError} · Revisa tu clave.`
-      : uncertain ? 'Pulsa DETENER para continuar.'
+    this.view.get('access-dot').dataset.state = accessState;
+    this.view.text('session-status', labels[accessState]);
+    this.view.get('session-reconnect').disabled = this.sessionLoading;
+    if (!this.sessionNotice) this.view.text('session-feedback', this.sessionLoading ? 'Conectando automáticamente…'
+      : this.api.hasKey() ? 'Sesión de control lista.' : 'No hay sesión de control disponible.');
+    const notice = uncertain ? 'Detención sin confirmar · revisa Monitoreo'
+      : this.sessionNotice ? 'Acceso no disponible · abre Ajustes'
         : phase === 'stopping' ? 'Deteniendo…'
-          : !this.apiAvailable ? 'Esperando la API.'
-            : !this.wsConnected ? 'Conectando WSS.'
-              : !this.ready ? 'Cargando vehículo.'
-                : demo ? 'DEMO en curso.'
-                  : accessState === 'pending' ? 'Envía una orden para validar.' : '');
-    this.view.text('session-feedback', feedback);
-    this.view.get('session-feedback').hidden = !feedback;
-    this.view.get('session-feedback').dataset.tone = authError || this.sessionNotice ? 'error' : 'neutral';
+          : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
+            : !this.api.hasKey() ? 'Preparando acceso…'
+              : demo ? 'DEMO en curso' : 'Listo para conducir';
+    this.view.text('control-notice', notice);
+    this.view.get('control-notice').parentElement.dataset.tone = uncertain || authError ? 'error' : 'neutral';
   }
 }
 

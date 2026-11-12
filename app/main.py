@@ -1,14 +1,18 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.routes import router
+from app.api.public_control import router as public_control_router
 from app.async_db import run_db
 from app.config import Settings
 from app.database import Database
+from app.documentation import DESCRIPTION, TAGS, swagger_documentation
 from app.errors import ApiError
 from app.services.catalog_service import CatalogService
 from app.services.control_service import ControlService
@@ -41,16 +45,34 @@ def create_app(settings=None, database=None):
     @asynccontextmanager
     async def lifespan(application):
         yield
-        await runtime.demos.shutdown()
+        try:
+            await runtime.demos.shutdown()
+        finally:
+            await runtime.websocket_manager.shutdown()
 
     application = FastAPI(
-        title="API Vehículo IoT · RDS", version="2.0.0", lifespan=lifespan,
-        description="API local orientada a objetos. Integra los 21 SP existentes de vehiculo_iot. "
-                    "Movimientos individuales: estado e historial atómicos. DEMO: estado y WebSocket, sin historial. "
-                    "Escrituras requieren X-API-Key. Ejecutar con un solo worker en localhost:8000.",
+        title="API Vehículo IoT · RDS", version="2.2.0", lifespan=lifespan,
+        description=DESCRIPTION, openapi_tags=TAGS, docs_url=None,
     )
     application.state.runtime = runtime
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://bauliere.github.io",
+            "http://127.0.0.1:5500",
+            "http://localhost:5500",
+        ],
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-API-Key"],
+    )
     application.include_router(router)
+    application.include_router(public_control_router)
+
+    @application.get("/docs", include_in_schema=False, response_class=HTMLResponse)
+    def documentation(request: Request):
+        root_path = request.scope.get("root_path", "").rstrip("/")
+        return swagger_documentation(application.openapi(), root_path + application.openapi_url, root_path)
 
     @application.exception_handler(ApiError)
     async def api_error_handler(request, error):
@@ -61,7 +83,7 @@ def create_app(settings=None, database=None):
         logger.error("Solicitud fallida (%s).", type(error).__name__)
         return JSONResponse(status_code=500, content={"detail": "Error interno del servidor."})
 
-    @application.get("/health", tags=["Diagnóstico"], summary="Comprobar servidor local",
+    @application.get("/health", tags=["Diagnóstico"], summary="Comprobar servidor",
                      response_model=HealthResponse)
     def health():
         return {"status": "ok", "database": "no comprobada", "docs": "/docs"}

@@ -4,11 +4,14 @@ import { ApiError, httpError, requireId, validateServiceUrl } from '../utils/err
 export class ApiClient {
   #key = '';
 
-  constructor(baseUrl, { timeoutMs = 8000, fetchImpl = globalThis.fetch } = {}) {
+  constructor(baseUrl, { timeoutMs = 8000, fetchImpl = globalThis.fetch, automaticVehicleId = null } = {}) {
     this.baseUrl = validateServiceUrl(baseUrl);
     this.timeoutMs = timeoutMs;
     // Fetch nativo debe conservar su contexto Window cuando se llama desde una clase.
     this.fetch = fetchImpl.bind(globalThis);
+    this.automaticVehicleId = automaticVehicleId;
+    this.sessionExpiry = 0;
+    this.sessionPromise = null;
   }
 
   setKey(value) {
@@ -24,11 +27,29 @@ export class ApiClient {
 
   hasKey() { return this.#key.length > 0; }
 
-  async request(path, { method = 'GET', body, signal, authorized = false } = {}) {
+  /** La clave maestra permanece en AWS. El navegador recibe una sesión limitada. */
+  async connectControl({ force = false } = {}) {
+    if (!this.automaticVehicleId) return;
+    if (!force && this.hasKey() && Date.now() < this.sessionExpiry - 30000) return;
+    if (this.sessionPromise) return this.sessionPromise;
+    this.sessionPromise = (async () => {
+      const session = await this.request('/control/sesion');
+      if (session?.id_vehiculo !== this.automaticVehicleId || typeof session.token !== 'string' ||
+          session.token.length < 32 || !Number.isInteger(session.expires_in) || session.expires_in < 1) {
+        throw new ApiError('El servidor no entregó una sesión de control válida.', { code: 'INVALID_RESPONSE' });
+      }
+      this.setKey(session.token);
+      this.sessionExpiry = Date.now() + session.expires_in * 1000;
+    })().finally(() => { this.sessionPromise = null; });
+    return this.sessionPromise;
+  }
+
+  async request(path, { method = 'GET', body, signal, authorized = false, retried = false } = {}) {
     if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')
         || path.includes('\\') || path.includes('..')) {
       throw new ApiError('La ruta del servicio no es válida.', { code: 'CONFIG' });
     }
+    if (authorized && this.automaticVehicleId) await this.connectControl();
     if (authorized && !this.hasKey()) {
       throw new ApiError('Introduce la clave de control para enviar órdenes.', {
         status: 401, code: 'AUTH_REQUIRED',
@@ -57,6 +78,11 @@ export class ApiClient {
         }
       }
       if (!response.ok) {
+        // Un 401 se rechaza antes de ejecutar la orden. Solo ese caso se reintenta.
+        if (response.status === 401 && authorized && this.automaticVehicleId && !retried) {
+          await this.connectControl({ force: true });
+          return this.request(path, { method, body, signal, authorized, retried: true });
+        }
         // Solo un JSON de diagnóstico explícito permite atribuir un fallo a RDS.
         const diagnostic = validJson && data !== null && typeof data === 'object'
           && !Array.isArray(data) && typeof data.detail === 'string';
@@ -92,6 +118,8 @@ export class ApiClient {
     return `${this.vehiclePath(vehicleId)}/demos/${requireId(demoId, 'ID de la DEMO')}`;
   }
   getVehicle(id, options) { return this.request(this.vehiclePath(id), options); }
+  getState(id, options) { return this.request(`${this.vehiclePath(id)}/estado`, options); }
+  getHistory(id, options) { return this.request(`${this.vehiclePath(id)}/historial`, options); }
   getCommands(id, options) { return this.request(`${this.vehiclePath(id)}/comandos`, options); }
   getDemos(id, options) { return this.request(`${this.vehiclePath(id)}/demos`, options); }
   getDemoSteps(vehicleId, demoId, options) {

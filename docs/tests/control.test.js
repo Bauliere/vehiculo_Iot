@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ControlController } from '../js/controllers/control-controller.js';
-import { ControlState } from '../js/state/control-state.js';
-import { Catalog } from '../js/domain/catalog.js';
+import { ControlController } from '../assets/js/controllers/control-controller.js';
+import { ControlState } from '../assets/js/state/control-state.js';
+import { Catalog } from '../assets/js/domain/catalog.js';
 
 const names = ['AVANZAR','RETROCEDER','GIRAR_IZQUIERDA','GIRAR_DERECHA','SUBIR_CAJA','BAJAR_CAJA','ALTERNAR_LUCES','ALTERNAR_SONIDO','DETENER'];
 const commands = names.map((nombre, index) => ({ nombre, id_comando: index + 1, codigo: index + 1, id_vehiculo: 1, activo: 1 }));
@@ -85,7 +85,7 @@ test('HTTP exitoso no se confunde con un evento, y solo corresponde el comando c
   control.handleEvent({tipo:'movimiento_individual',id_vehiculo:1,id_comando:2,codigo:2,comando:'RETROCEDER',timestamp:stamp});
   assert.equal(state.value.event,'Esperando evento');
   control.handleEvent({tipo:'movimiento_individual',id_vehiculo:1,id_comando:1,codigo:1,comando:'AVANZAR',timestamp:stamp});
-  assert.match(state.value.event,/AVANZAR/);
+  assert.match(state.value.event,/Avanzar/);
 });
 test('una orden nueva idéntica puede enviarse después de la anterior', async () => {
   const {control,calls} = setup();
@@ -160,7 +160,7 @@ test('la clave se valida con la respuesta de una orden, no con consultas ni even
   const moving = send(control, 1);
   control.handleEvent({ tipo: 'movimiento_individual', id_vehiculo: 1, id_comando: 1,
     codigo: 1, comando: 'AVANZAR', timestamp: new Date().toISOString() });
-  assert.match(state.value.event, /AVANZAR/);
+  assert.match(state.value.event, /Avanzar/);
   assert.equal(state.value.authValidated, false);
   response.resolve({ id_vehiculo: 1, id_comando: 1 });
   await moving;

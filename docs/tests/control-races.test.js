@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ControlController } from '../js/controllers/control-controller.js';
-import { ControlState } from '../js/state/control-state.js';
-import { Catalog } from '../js/domain/catalog.js';
+import { ControlController } from '../assets/js/controllers/control-controller.js';
+import { ControlState } from '../assets/js/state/control-state.js';
+import { Catalog } from '../assets/js/domain/catalog.js';
 
 const deferred = () => {
   let resolve;

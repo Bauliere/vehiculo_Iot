@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Joystick } from '../js/components/joystick.js';
+import { Joystick } from '../assets/js/components/joystick.js';
 
 function fixture() {
   const element = new EventTarget();

@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     db_timeout_seconds: int = Field(default=5, ge=1, le=30)
     api_control_key: SecretStr = SecretStr("")
     api_admin_key: SecretStr = SecretStr("")
+    # Solo activar si se desea que cualquier visitante controle este vehículo.
+    # La clave maestra permanece en el servidor; el navegador recibe una sesión breve.
+    public_control_enabled: bool = False
+    public_control_vehicle_id: int = Field(default=1, ge=1, le=2_147_483_647)
 
     def validate_database(self):
         from app.errors import ApiError
