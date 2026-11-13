@@ -59,6 +59,8 @@ const SPLASH_JETS = 3;
 const PIXEL_BUDGET = 1.1e6;
 const FRAME_MS = 1000 / 30;
 const CLICK_LIGHT_MS = 850;
+const SMOKE_POINTS = 18;
+const SMOKE_MS = 1550;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -240,7 +242,8 @@ uniform vec2 uFluidTexel;
 uniform float uFluid;
 uniform float uInk;
 uniform float uLean;
-uniform vec3 uPointerLight;
+uniform vec4 uSmokeTrail[${SMOKE_POINTS}];
+uniform int uSmokeCount;
 uniform float uPointerRadius;
 uniform vec4 uClickLight;
 uniform float uLightWaves;
@@ -250,6 +253,12 @@ const float TURN[4] = float[4](0.0, -0.95, 0.78, 1.62);
 const float LENGTH[4] = float[4](2.6, 1.7, 1.12, 0.76);
 const float HEIGHT[4] = float[4](1.0, 0.75, 0.5, 0.3);
 const float SHIFT[4] = float[4](0.0, 2.3, 4.1, 1.1);
+
+float smokeNoise(vec2 p) {
+  return sin(p.x + sin(p.y * 1.38)) * 0.47
+    + sin(p.y * 2.1 - p.x * 0.74) * 0.31
+    + sin(p.x * 3.28 + p.y * 2.41) * 0.22;
+}
 
 void main() {
   vec2 cell = floor(gl_FragCoord.xy);
@@ -293,19 +302,31 @@ void main() {
   float haze = mix(1.0, 1.0 - uFog, pow(1.0 - v, 1.4));
   float light = (pow(level, uContrast) + glint * 0.8) * haze;
   float glow = 1.0 - exp(-max(ink, 0.0) * uInk * 1.6);
-  // Una cresta luminosa recorre las piezas sin añadir otra pasada de render.
+  // Nubes anchas con bordes irregulares, dibujadas en la misma pasada que las piezas.
   vec2 uv = center / uSize;
-  float phase = uv.y * 5.2 + uv.x * 2.7 + sin(uv.x * 6.0 - uTime * 0.45) * 0.72 - uTime * 1.25;
-  float wave = pow(0.5 + 0.5 * cos(phase), 5.0) * uLightWaves;
-  float distanceToPointer = distance(center, uPointerLight.xy) / max(uPointerRadius, 1.0);
-  float halo = exp(-distanceToPointer * distanceToPointer * 2.5);
-  float rings = 0.75 + 0.25 * cos(distanceToPointer * 13.0 - uTime * 5.5);
+  vec2 field = vec2(uv.x * uSize.x / uSize.y, uv.y);
+  float drift = smokeNoise(field * 5.7 + vec2(-uTime * 0.32, uTime * 0.2));
+  float curl = smokeNoise(field * 13.0 + vec2(drift * 1.4, -uTime * 0.44));
+  float phase = uv.y * 6.2 + uv.x * 2.8 - uTime * 1.2 + drift * 1.42 + curl * 0.38;
+  float cloud = pow(0.5 + 0.5 * cos(phase), 2.1);
+  float wave = smoothstep(0.05, 0.9, cloud * (0.78 + 0.33 * drift) + 0.11 * curl) * uLightWaves;
+  float smoke = 0.0;
+  for (int i = 0; i < ${SMOKE_POINTS}; i++) {
+    if (i >= uSmokeCount) break;
+    vec4 puff = uSmokeTrail[i];
+    vec2 offset = (center - puff.xy) / puff.z;
+    float edge = 1.0 - dot(offset, offset * vec2(1.0, 0.7));
+    if (edge < -0.35) continue;
+    float fold = smokeNoise(offset * 3.9 + vec2(float(i) * 1.7, -uTime * 0.8));
+    smoke += smoothstep(-0.27, 0.83, edge + fold * 0.37) * puff.w;
+  }
+  smoke = 1.0 - exp(-smoke);
   // El pulso sale del punto del clic y no sigue al cursor.
   float clickDistance = distance(center, uClickLight.xy);
   float clickEdge = (clickDistance - uClickLight.z) / max(uPointerRadius * 0.23, 1.0);
   float clickGlow = exp(-clickEdge * clickEdge) * uClickLight.w;
   light = light * (1.0 - 0.58 * uLightWaves) + wave * 0.64;
-  glow = max(glow, max(halo * rings * uPointerLight.z, clickGlow));
+  glow = max(glow, max(smoke, clickGlow));
   light = 1.0 - (1.0 - clamp(light, 0.0, 1.0)) * (1.0 - glow);
 
   float front = uIntro * 1.35;
@@ -511,7 +532,8 @@ const MicroSlats = ({
       uFluid: { value: 0 },
       uInk: { value: 1 },
       uLean: { value: 0.5 },
-      uPointerLight: { value: [0, 0, 0] },
+      uSmokeTrail: { value: new Array(SMOKE_POINTS * 4).fill(0) },
+      uSmokeCount: { value: 0 },
       uPointerRadius: { value: 1 },
       uClickLight: { value: [0, 0, 0, 0] },
       uLightWaves: { value: 0 }
@@ -604,7 +626,7 @@ const MicroSlats = ({
     let splashTurn = 0;
     const splats = [];
     const pointer = { x: 0, y: 0, tracked: false };
-    const light = { x: 0, y: 0, strength: 0 };
+    const smoke = [];
     const clickLight = { x: 0, y: 0, startedAt: -Infinity };
 
     const run = (mesh, target) => renderer.render({ scene: mesh, target, clear: false });
@@ -787,13 +809,6 @@ const MicroSlats = ({
       if (!s) return;
 
       if (!s.paused && !reducedMotion) time += dt * s.speed;
-      if (s.pointerLight) {
-        const follow = 1 - Math.exp(-dt * 18);
-        light.x += (pointer.x - light.x) * follow;
-        light.y += (pointer.y - light.y) * follow;
-        const strength = pointer.tracked && s.interactive ? s.cursorStrength : 0;
-        light.strength += (strength - light.strength) * follow;
-      }
       introClock = s.intro && !reducedMotion ? introClock + dt / Math.max(0.2, s.introDuration) : 1;
       const introLinear = Math.min(introClock, 1);
       const introEase =
@@ -856,10 +871,18 @@ const MicroSlats = ({
       fieldUniforms.uFluidTexel.value = fluidTexel.value;
       fieldUniforms.uInk.value = clamp(s.cursorStrength, 0, 3);
       fieldUniforms.uLean.value = clamp(s.lean, 0, 1);
-      const pointerGlow = fieldUniforms.uPointerLight.value;
-      pointerGlow[0] = light.x;
-      pointerGlow[1] = light.y;
-      pointerGlow[2] = s.pointerLight ? clamp(light.strength, 0, 1) : 0;
+      while (smoke.length && now - smoke[0].time >= SMOKE_MS) smoke.shift();
+      const particles = fieldUniforms.uSmokeTrail.value;
+      particles.fill(0);
+      smoke.forEach((puff, index) => {
+        const age = clamp((now - puff.time) / SMOKE_MS, 0, 1);
+        const offset = index * 4;
+        particles[offset] = puff.x + (Math.sin(puff.x * 0.047 + age * 4.0) * 32 + 13) * age;
+        particles[offset + 1] = puff.y - (31 + 22 * age) * age;
+        particles[offset + 2] = s.cursorSize * (0.21 + 0.46 * age);
+        particles[offset + 3] = s.cursorStrength * (1 - age) ** 1.65 * (0.48 + 0.52 * Math.min(1, age * 7));
+      });
+      fieldUniforms.uSmokeCount.value = smoke.length;
       fieldUniforms.uPointerRadius.value = s.cursorSize;
       const clickProgress = clamp((now - clickLight.startedAt) / CLICK_LIGHT_MS, 0, 1);
       const pulse = fieldUniforms.uClickLight.value;
@@ -883,7 +906,7 @@ const MicroSlats = ({
       renderer.render({ scene: slatMesh });
 
       const moving = (!s.paused && !reducedMotion && s.speed !== 0) || introClock < 1;
-      if (visible && (moving || fluidActive || fluidDirty || pointerGlow[2] > 0.005 || pulse[3] > 0)) raf = requestAnimationFrame(frame);
+      if (visible && (moving || fluidActive || fluidDirty || smoke.length || pulse[3] > 0)) raf = requestAnimationFrame(frame);
     };
 
     const start = () => {
@@ -920,10 +943,6 @@ const MicroSlats = ({
       if (fluid && pointer.tracked && (spot.x !== pointer.x || spot.y !== pointer.y)) {
         queue(spot.u, spot.v, (spot.x - pointer.x) / spot.h, (pointer.y - spot.y) / spot.h, null);
       }
-      if (s.pointerLight && !pointer.tracked && light.strength < 0.05) {
-        light.x = spot.x;
-        light.y = spot.y;
-      }
       pointer.x = spot.x;
       pointer.y = spot.y;
       pointer.tracked = true;
@@ -931,7 +950,26 @@ const MicroSlats = ({
       return spot;
     };
 
-    const onPointerMove = e => { trackPointer(e); };
+    const onPointerMove = e => {
+      const wasTracked = pointer.tracked;
+      const previousX = pointer.x;
+      const previousY = pointer.y;
+      const spot = trackPointer(e);
+      if (!spot || !wasTracked || !settingsRef.current.pointerLight) return;
+      const dx = spot.x - previousX;
+      const dy = spot.y - previousY;
+      const distance = Math.hypot(dx, dy);
+      if (distance < 3) return;
+      const now = performance.now();
+      const lastPuff = smoke.at(-1);
+      if (lastPuff && now - lastPuff.time < 23 && distance < 16) return;
+      const count = Math.min(4, Math.ceil(distance / 24));
+      for (let step = 1; step <= count; step++) {
+        const part = step / count;
+        smoke.push({ x: previousX + dx * part, y: previousY + dy * part, time: now });
+      }
+      if (smoke.length > SMOKE_POINTS) smoke.splice(0, smoke.length - SMOKE_POINTS);
+    };
 
     const onPointerDown = e => {
       if (e.button !== 0) return;

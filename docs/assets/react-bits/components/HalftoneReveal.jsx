@@ -66,7 +66,6 @@ uniform float uShift;
 uniform vec3 uMatte;
 uniform float uKey;
 uniform float uReverse;
-uniform float uDetail;
 uniform float uIntro;
 uniform vec4 uBursts[4];
 uniform float uBurstWidth;
@@ -285,9 +284,7 @@ void main() {
   float k = smoothstep(r + w, r - w, d) * clamp(r / (w * 2.0), 0.0, 1.0);
   vec4 sharp = photo(p, 0.0, 0.0);
   vec3 real = mix(uPaper, sharp.rgb, sharp.a);
-  float trace = smoothstep(0.38, 0.91, dot(sharp.rgb, LUMA)) * sharp.a;
-  vec3 detail = mix(uPaper, uInk, trace);
-  outColor = vec4(mix(mix(print, detail, uDetail), real, k), 1.0);
+  outColor = vec4(mix(print, real, k), 1.0);
 }`;
 
 const MODES = { mono: 0, duotone: 1, color: 2 };
@@ -386,7 +383,6 @@ const HalftoneReveal = ({
   softness = 0.6,
   linger = 1.2,
   reverse = false,
-  detail = 0,
   wander = false,
   clickBurst = true,
   intro = true,
@@ -403,7 +399,7 @@ const HalftoneReveal = ({
     fit,
     mode: MODES[mode] ?? 0,
     shape: SHAPES[shape] ?? 0,
-    cellSize: clamp(cellSize, 1.25, 80),
+    cellSize: clamp(cellSize, 2, 80),
     angle,
     dotScale: clamp(dotScale, 0.2, 2),
     inkColor: String(inkColor),
@@ -418,7 +414,6 @@ const HalftoneReveal = ({
     softness: clamp(softness, 0, 1),
     linger: Math.max(0, linger),
     reverse,
-    detail: clamp(detail, 0, 1),
     wander,
     clickBurst,
     intro
@@ -482,7 +477,6 @@ const HalftoneReveal = ({
       'uMatte',
       'uKey',
       'uReverse',
-      'uDetail',
       'uIntro',
       'uBursts',
       'uBurstWidth'
@@ -664,7 +658,6 @@ const HalftoneReveal = ({
       gl.uniform3fv(viewUniforms.uMatte, state.matte);
       gl.uniform1f(viewUniforms.uKey, state.key);
       gl.uniform1f(viewUniforms.uReverse, s.reverse ? 1 : 0);
-      gl.uniform1f(viewUniforms.uDetail, s.detail);
       gl.uniform1f(viewUniforms.uIntro, 1 - (1 - intro) * (1 - intro));
       gl.uniform4fv(viewUniforms.uBursts, burstData);
       gl.uniform1f(viewUniforms.uBurstWidth, Math.max(60, s.revealRadius * 0.9));

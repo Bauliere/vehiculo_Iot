@@ -249,7 +249,7 @@ let browser, activePage;
   await view('control');
   assert.equal(await page.locator('#theme-button img').evaluate(el=>el.complete&&el.naturalWidth>0),true);
   const beforeThemes=calls.length, accents=[];
-  for(const theme of ['forest','violet','eva','rose','red']){
+  for(const theme of ['forest','violet','eva','rose','red','silver']){
     assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
     accents.push(await page.locator('#api-status .status-dot').evaluate(el=>getComputedStyle(el).backgroundColor));
     for(const [size,width,height]of[['desktop',1440,1000],['mobile',390,844]]){
@@ -258,7 +258,7 @@ let browser, activePage;
     }
     await page.locator('#theme-button').click();
   }
-  assert.equal(new Set(accents).size,5,'Indicadores con cinco acentos');
+  assert.equal(new Set(accents).size,6,'Indicadores con seis acentos');
   assert.equal(calls.length,beforeThemes,'Cambiar tema no envía órdenes');
   await page.setViewportSize({width:1024,height:520});
   await openPanel('session');
@@ -386,7 +386,7 @@ let browser, activePage;
   console.log(JSON.stringify({date:new Date().toISOString(),target:'Frontend local con REST/WSS interceptados. Sin POST reales.',browser:await browser.version(),
     checks:['Subruta Pages','Joystick/palanca ratón teclado toque y parada','Luces y sonido','DEMO y cancelación','REST inicial/eventos externos',
       'Historial máximo10, orden, deduplicación y paginación','DEMO no contamina historial','Reconexión recupera datos perdidos',
-      'Doce resoluciones sin scroll','Cinco paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
+      'Doce resoluciones sin scroll','Seis paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
       'Indicadores independientes','Favicon y créditos'],reads,calls,errors},null,2));
 })().catch(async error=>{
   console.error(error);

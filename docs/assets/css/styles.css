@@ -1,5 +1,5 @@
 @charset "UTF-8";
-/* Las cuatro paletas comparten el mismo diseño y estados de interacción. */
+/* Las paletas comparten el mismo diseño y estados de interacción. */
 :root,
 :root[data-theme="forest"] {
   color-scheme: dark;
@@ -1943,6 +1943,23 @@ button {
   --danger: #ffc479;
   --border: rgba(255, 191, 197, .19);
   --shadow: rgba(0, 0, 0, .28);
+}
+
+:root[data-theme="silver"] {
+  color-scheme: dark;
+  --bg: #0a0a0c;
+  --glow: #383941;
+  --panel: rgba(22, 23, 27, .89);
+  --surface: #292b31;
+  --surface-deep: #141519;
+  --text: #f5f5f7;
+  --muted: #bdbec8;
+  --accent: #d9dae4;
+  --accent-strong: #ffffff;
+  --ink: #131419;
+  --danger: #f4a4a9;
+  --border: rgba(233, 235, 255, .23);
+  --shadow: rgba(0, 0, 0, .38);
 }
 
 html, body {

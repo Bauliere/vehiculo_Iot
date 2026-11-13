@@ -26,7 +26,7 @@ La dirección de la API y el vehículo se configuran en `assets/js/config.js`. E
 3. Usa el joystick o las flechas del teclado. Al soltar se envía **DETENER**. La palanca sube y baja la caja; la barra inferior contiene luces y sonido.
 4. Abre **DEMO** para consultar el recorrido. Mantén pulsado **Iniciar DEMO** hasta que se llene el botón. La DEMO 1 se selecciona al cargar cuando está disponible. **Cancelar** y **DETENER** siguen disponibles durante el recorrido.
 
-Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01, Rosa claro y Rojo grafito. La paleta se recuerda en el navegador. **Ajustes → Reconectar** recupera el acceso si falló la conexión inicial.
+Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01, Rosa claro, Rojo grafito y Plata sobre negro. La paleta se recuerda en el navegador. **Ajustes → Reconectar** recupera el acceso si falló la conexión inicial.
 
 Los títulos, Fausto, el fondo y los paneles usan React Bits. El cursor animado aparece con ratón. El navegador muestra la versión estática si no puede ejecutar los efectos WebGL o si está activada la reducción de movimiento. Para editar y recompilar los componentes, consulta el [README del repositorio](../README.md#efectos-visuales).
 

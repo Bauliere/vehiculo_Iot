@@ -5,6 +5,10 @@ import HalftoneReveal from './components/HalftoneReveal.jsx';
 import MicroSlats from './components/MicroSlats.jsx';
 import TargetCursor from './components/TargetCursor.jsx';
 import WarpText from './components/WarpText.jsx';
+import { mountCardTilt } from './card-tilt.js';
+
+// El paso de la cuadrícula se reduce en ambos ejes para ganar un 10 % de piezas por área.
+const SLAT_SCALE = 1 / Math.sqrt(1.1);
 
 class VisualBoundary extends Component {
   state = { failed: false };
@@ -50,10 +54,9 @@ function Fausto({ host, logo, accent, paper }) {
     inkColor={accent}
     accentColor={accent}
     paperColor={paper}
-    cellSize={1.55}
+    cellSize={2.4}
     angle={35}
-    dotScale={0.98}
-    detail={0.76}
+    dotScale={1.1}
     revealRadius={19}
     softness={0.72}
     linger={0.34}
@@ -112,6 +115,7 @@ export function mountVisuals(document) {
     root: withVisualRoot(host),
     turned: false
   }));
+  mountCardTilt(document, mouse, motion);
 
   let webgl = false;
   try {
@@ -155,9 +159,9 @@ export function mountVisuals(document) {
       glintColor={palette['accent-strong']}
       backgroundColor={palette.bg}
       speed={small.matches ? 0.48 : 0.58}
-      slatWidth={small.matches ? 5 : 8}
-      slatHeight={small.matches ? 13 : 21}
-      gap={small.matches ? 2 : 3}
+      slatWidth={(small.matches ? 5 : 8) * SLAT_SCALE}
+      slatHeight={(small.matches ? 13 : 21) * SLAT_SCALE}
+      gap={(small.matches ? 2 : 3) * SLAT_SCALE}
       contrast={1.12}
       stretch={0.11}
       glint={0.72}
