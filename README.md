@@ -22,6 +22,7 @@ Abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/). Mantén la terminal abier
 - La DEMO 1 se carga si está activa. Elige el recorrido y mantén pulsado **Iniciar DEMO** hasta que se llene el botón. Los eventos de cada paso iluminan o mueven el control correspondiente. DETENER tiene prioridad sobre la secuencia.
 - Monitoreo consulta estado e historial por REST, recibe eventos por el mismo WSS y recupera datos cuando vuelve la conexión. El historial muestra hasta diez filas persistidas, en hora de Ciudad de México. Los pasos internos de DEMO actualizan el estado y quedan fuera del historial individual.
 - CONTROL y MONITOREO caben en la pantalla del teléfono y la laptop. En horizontal, la barra de acciones queda al costado en el teléfono. El historial se consulta por páginas cuando hace falta. Pulsa el icono junto a CONTROL / IoT para cambiar la paleta, incluida Rojo grafito.
+- Pantalla completa enfoca la vista de CONTROL. Fausto.IA interpreta texto o voz y muestra los pasos del recorrido antes de que los confirmes. [Uso y configuración de Fausto.IA](docs/README.md#faustoia-y-pantalla-completa)
 
 ## Estructura
 

@@ -38,6 +38,43 @@ Si una parada no se confirma, los movimientos quedan bloqueados hasta que se pue
 
 Los indicadores de luces y sonido representan la alternancia solicitada y observada por WSS durante la sesión; no son sensores físicos. Al entrar se desconoce el estado anterior. DETENER no altera esos indicadores. La animación de DEMO sigue los eventos recibidos y no genera movimientos adicionales.
 
+## Fausto.IA y pantalla completa
+
+El icono de pantalla completa abre CONTROL y oculta la navegación. Pulsa el mismo botón o Esc para volver. Cuando el navegador permite pantalla completa, también oculta su propia barra.
+
+**Fausto.IA** está en la barra de funciones. Escribe una orden o pulsa el micrófono, habla y pulsa de nuevo para enviar. La grabación se corta a los 15 segundos. Revisa la secuencia antes de tocar **Ejecutar**. **Detener** cancela el recorrido en curso.
+
+Prueba con «Avanza 10 segundos y luego gira a la derecha». El servidor interpreta el texto o audio con Gemini Flash-Lite y la ESP recibe los pasos temporizados por el WSS existente. El recorrido cambia el estado reportado y no crea una DEMO guardada. La confirmación corresponde al servidor. Comprueba la actuación del vehículo en el Monitor Serie y físicamente.
+
+Para habilitarlo, actualiza FastAPI en EC2 y configura `GEMINI_API_KEY` en su `.env` privado. `GEMINI_MODEL` permite cambiar el modelo y `FAUSTO_DAILY_LIMIT` fija el máximo de consultas por día UTC mientras corre el proceso. Si reinicias FastAPI, el contador vuelve a empezar. El audio y el texto se envían a Google para su interpretación. [Configurar Gemini](https://aistudio.google.com/apikey) · [Precios y cuota gratuita](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-lite)
+
+### Actualizar la instancia
+
+1. Copia `Fausto-IA-EC2.zip` a `C:\Users\Administrator\Desktop\websocket_iot` en el escritorio remoto.
+2. En PowerShell de la instancia, guarda una copia del código actual, extrae la actualización y comprueba que FastAPI la reconoce.
+
+   ```powershell
+   Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
+   $respaldoFausto = "respaldo_fausto_$(Get-Date -Format yyyyMMdd_HHmmss)"
+   Copy-Item -LiteralPath '.\app' -Destination $respaldoFausto -Recurse -ErrorAction Stop
+   Expand-Archive -LiteralPath '.\Fausto-IA-EC2.zip' -DestinationPath '.' -Force -ErrorAction Stop
+   .\.venv\Scripts\python.exe -m pip install --no-index '.\certifi-2026.10.23-py3-none-any.whl'
+   .\.venv\Scripts\python.exe -c "from app.main import app; print(any('/fausto/interpretar' in r for r in app.openapi()['paths']))"
+   ```
+
+3. Si aparece `True`, ejecuta `notepad .env`. Añade `GEMINI_API_KEY=` seguido de la nueva clave de Google AI Studio. Guarda y cierra el editor. Usa una clave de un proyecto que tenga acceso al modelo.
+4. Reinicia la tarea de la API y abre Swagger para comprobar que aparece el grupo **Fausto.IA**.
+
+   ```powershell
+   Stop-ScheduledTask -TaskName 'VehiculoIoT-API'
+   Start-Sleep -Seconds 3
+   Start-ScheduledTask -TaskName 'VehiculoIoT-API'
+   Start-Sleep -Seconds 3
+   Invoke-RestMethod 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
+   ```
+
+5. En CONTROL, envía primero una orden y comprueba los tiempos del plan. Pulsa **Ejecutar** cuando tengas el carrito a la vista. Para una prueba corta, usa «Muévete tantito hacia delante».
+
 ## Acceso automático y AWS
 
 La API incorpora `GET /control/sesion`. Cuando el servidor habilita el modo público, emite una sesión de quince minutos limitada a movimientos y DEMO de un vehículo. La página renueva esa sesión cuando corresponde y la mantiene en memoria. Las claves maestras de control y administración permanecen en AWS.

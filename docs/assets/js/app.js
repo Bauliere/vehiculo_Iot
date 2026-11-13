@@ -14,6 +14,8 @@ import { MonitorController } from './controllers/monitor-controller.js';
 import { MonitorView } from './components/monitor-view.js';
 import { ControlFeedback } from './components/control-feedback.js';
 import { bindHoldGesture } from './components/hold-gesture.js';
+import { PilotFullscreen } from './components/fullscreen.js';
+import { FaustoChat } from './components/fausto-chat.js';
 
 const DEMO_HOLD_MS = 900;
 
@@ -53,6 +55,18 @@ class ControlApplication {
       canOperate: () => this.ready && this.apiAvailable && this.wsConnected && !this.state.value.authError,
       onNeutral: () => { this.joystick?.reset(); this.lever?.reset(); },
     });
+    this.fullscreen = new PilotFullscreen(document, this.navigation);
+    this.fausto = new FaustoChat(document, this.api, CONFIG.vehicleId, {
+      canExecute: () => this.ready && this.wsConnected && this.apiAvailable && this.api.hasKey() &&
+        !this.state.value.authError && this.state.value.phase === 'idle' &&
+        !this.controller.demoId && !this.controller.pending && !this.controller.inFlight,
+      onOpen: () => {
+        this.navigation.closePanel();
+        if (this.joystick.active || this.lever.active) void this.controller.stop();
+      },
+      onRun: () => this.updateControls(),
+      stop: () => this.controller.stop(),
+    });
     this.joystick = new Joystick(this.view.get('joystick'), {
       onDirection: direction => {
         if (direction !== 'stop') this.lever?.reset();
@@ -78,7 +92,7 @@ class ControlApplication {
     this.state.subscribe(value => { this.view.render(value); this.updateControls(); });
     this.socket = new SocketClient(socketUrl(), {
       onStatus: status => this.socketStatus(status),
-      onEvent: event => { this.controller.handleEvent(event); this.monitor.handleEvent(event); this.feedback.handleEvent(event); this.updateControls(); },
+      onEvent: event => { this.controller.handleEvent(event); this.monitor.handleEvent(event); this.feedback.handleEvent(event); this.fausto.handleEvent(event); this.updateControls(); },
       onError: message => { this.state.update({ message, tone: 'error' }); },
     });
     this.health = new HealthService(this.api, {
@@ -90,6 +104,8 @@ class ControlApplication {
   start() {
     this.theme.start();
     this.navigation.start();
+    this.fullscreen.start();
+    this.fausto.start();
     this.startEffects();
     this.historyResize.observe(this.view.get('monitor-history-body').closest('.history-table-wrap'));
     this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor.refresh());
@@ -100,8 +116,9 @@ class ControlApplication {
     const url = this.view.get('api-url');
     url.textContent = 'Swagger UI ↗';
     url.href = `${CONFIG.apiBaseUrl}/docs`;
-    this.view.get('stop-button').addEventListener('click', () => void this.controller.stop());
-    this.view.get('demo-cancel').addEventListener('click', () => void this.controller.stop());
+    const stop = () => void (this.fausto.run ? this.fausto.halt() : this.controller.stop());
+    this.view.get('stop-button').addEventListener('click', stop);
+    this.view.get('demo-cancel').addEventListener('click', stop);
     this.view.get('demo-select').addEventListener('change', () => void this.selectDemo());
     this.view.get('refresh-button').addEventListener('click', () => {
       void this.health.check();
@@ -110,12 +127,12 @@ class ControlApplication {
       if (!this.ready) void this.loadCatalog();
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) this.controller.connectionLost();
+      if (document.hidden) this.connectionLost();
       else void this.health.check();
     });
-    window.addEventListener('blur', () => this.controller.connectionLost());
+    window.addEventListener('blur', () => this.connectionLost());
     window.addEventListener('pagehide', () => {
-      this.controller.connectionLost();
+      this.connectionLost();
       this.socket.stop();
       this.health.stop();
       this.monitor.stop();
@@ -129,6 +146,11 @@ class ControlApplication {
     void this.loadCatalog();
     void this.monitor.start();
     void this.connectSession();
+  }
+
+  connectionLost() {
+    if (this.fausto.run) this.fausto.disconnect();
+    else this.controller.connectionLost();
   }
 
   startEffects() {
@@ -238,7 +260,7 @@ class ControlApplication {
     this.wsConnected = status === 'connected';
     const states = { connected: ['online', 'En línea'], connecting: ['connecting', 'Conectando'], reconnecting: ['connecting', 'Reconectando'], disconnected: ['offline', 'Desconectado'] };
     this.view.status('ws-status', ...states[status]);
-    if (wasConnected && !this.wsConnected) this.controller.connectionLost();
+    if (wasConnected && !this.wsConnected) this.connectionLost();
     if (!this.wsConnected) this.feedback.neutral();
     this.updateControls();
   }
@@ -250,7 +272,7 @@ class ControlApplication {
     const rdsLabels = { available: 'Disponible', unavailable: 'No disponible', unverified: 'Sin verificar' };
     this.view.status('api-status', status.api, apiLabels[status.api]);
     this.view.status('rds-status', status.rds, rdsLabels[status.rds]);
-    if (wasAvailable && !this.apiAvailable) this.controller.connectionLost();
+    if (wasAvailable && !this.apiAvailable) this.connectionLost();
     if (this.apiAvailable && !this.ready) void this.loadCatalog();
     if (this.apiAvailable && !wasAvailable && !this.api.hasKey()) void this.connectSession();
     this.updateControls();
@@ -261,7 +283,8 @@ class ControlApplication {
     const demo = this.controller.demoId !== null;
     const uncertain = phase === 'uncertain';
     const authError = this.state.value.authError;
-    const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo && !uncertain && phase !== 'stopping';
+    const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected &&
+      !demo && !this.fausto.run && !uncertain && phase !== 'stopping';
     const allDirections = ['forward', 'backward', 'left', 'right'].every(name => this.catalog.direction(name));
     const crossingNeutral = this.controller.keepGestureDuringStop && phase === 'stopping' &&
       this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo;

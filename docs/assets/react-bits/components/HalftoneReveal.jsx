@@ -382,6 +382,7 @@ const HalftoneReveal = ({
   revealRadius = 160,
   softness = 0.6,
   linger = 1.2,
+  approach = 0,
   reverse = false,
   wander = false,
   clickBurst = true,
@@ -779,6 +780,16 @@ const HalftoneReveal = ({
       pointer.inside = false;
       wake();
     };
+    const onApproach = event => {
+      if (event.pointerType !== 'mouse' || document.querySelector('dialog[open]')) return;
+      const rect = container.getBoundingClientRect();
+      if (event.clientX >= rect.left - approach && event.clientX <= rect.right + approach &&
+          event.clientY >= rect.top - approach && event.clientY <= rect.bottom + approach) {
+        onMove(event);
+      } else if (pointer.inside) {
+        onLeave();
+      }
+    };
     const onDown = event => {
       onMove(event);
       if (!settingsRef.current.clickBurst || (event.pointerType === 'mouse' && event.button !== 0)) return;
@@ -795,6 +806,10 @@ const HalftoneReveal = ({
     container.addEventListener('pointerdown', onDown, { passive: true });
     container.addEventListener('pointerleave', onLeave, { passive: true });
     container.addEventListener('pointercancel', onLeave, { passive: true });
+    if (approach) {
+      window.addEventListener('pointermove', onApproach, { passive: true });
+      window.addEventListener('blur', onLeave);
+    }
     canvas.addEventListener('webglcontextlost', onContextLost);
     document.addEventListener('visibilitychange', onVisibility);
     const resizeObserver = new ResizeObserver(resize);
@@ -828,6 +843,8 @@ const HalftoneReveal = ({
       container.removeEventListener('pointerdown', onDown);
       container.removeEventListener('pointerleave', onLeave);
       container.removeEventListener('pointercancel', onLeave);
+      window.removeEventListener('pointermove', onApproach);
+      window.removeEventListener('blur', onLeave);
       canvas.removeEventListener('webglcontextlost', onContextLost);
       document.removeEventListener('visibilitychange', onVisibility);
       masks.forEach(destroyMask);

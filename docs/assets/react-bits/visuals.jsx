@@ -57,9 +57,10 @@ function Fausto({ host, logo, accent, paper }) {
     cellSize={2.4}
     angle={35}
     dotScale={1.1}
-    revealRadius={19}
-    softness={0.72}
-    linger={0.34}
+    revealRadius={35}
+    softness={0.65}
+    linger={0.52}
+    approach={20}
     intro={false}
     onReady={ready => host.toggleAttribute('data-ready', ready)}
   />;
@@ -103,7 +104,17 @@ export function mountVisuals(document) {
   const paletteKeys = ['bg', 'glow', 'surface-deep', 'text', 'accent', 'accent-strong'];
   const logo = document.querySelector('#theme-button img').src;
   const background = withVisualRoot(document.getElementById('slats-effect'));
-  const cursor = withVisualRoot(document.getElementById('cursor-effect'));
+  const cursorHost = document.getElementById('cursor-effect');
+  const cursorHome = cursorHost.parentNode;
+  const cursor = withVisualRoot(cursorHost);
+  // El cursor decorativo tiene que entrar en la misma capa superior que el diálogo.
+  const cursorLayer = new MutationObserver(() => {
+    const host = document.querySelector('dialog[open]') || cursorHome;
+    if (cursorHost.parentNode !== host) host.append(cursorHost);
+  });
+  for (const dialog of document.querySelectorAll('dialog')) {
+    cursorLayer.observe(dialog, { attributes: true, attributeFilter: ['open'] });
+  }
   const logoHost = document.getElementById('fausto-effect');
   const fausto = withVisualRoot(logoHost);
   const headings = Array.from(document.querySelectorAll('[data-warp-title]'), source => {
@@ -154,30 +165,24 @@ export function mountVisuals(document) {
     const viewChanged = previousView !== html.dataset.view;
     previousView = html.dataset.view;
     background.render(active && <MicroSlats
-      preset="tide"
+      preset="swell"
       color={palette.accent}
       glintColor={palette['accent-strong']}
       backgroundColor={palette.bg}
-      speed={small.matches ? 0.48 : 0.58}
       slatWidth={small.matches ? 7 : 11.5}
       slatHeight={small.matches ? 18 : 30}
       gap={(small.matches ? 2 : 3) * SLAT_GAP_SCALE}
-      contrast={1.12}
-      stretch={0}
-      glint={0.72}
-      fog={0.27}
-      perspective={0.6}
-      lightWaves={1.0925}
       interactive={mouse.matches}
+      fluidTrail
       pointerLight
       touchPulse
-      cursorStrength={0.85}
-      cursorSize={small.matches ? 92 : 140}
+      cursorSize={56}
+      pulseSize={small.matches ? 92 : 140}
       intro={false}
     />);
     cursor.render(animate && mouse.matches && <TargetCursor
       container={shell}
-      targetSelector="[data-cursor-target]"
+      targetSelector="button, [role='button'], [data-cursor-target], a, select"
       cursorColor={palette['accent-strong']}
       cursorColorOnTarget={palette.accent}
       size={23}

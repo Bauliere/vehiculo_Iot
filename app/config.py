@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # La clave maestra permanece en el servidor; el navegador recibe una sesión breve.
     public_control_enabled: bool = False
     public_control_vehicle_id: int = Field(default=1, ge=1, le=2_147_483_647)
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_model: str = Field(default="gemini-3.1-flash-lite", pattern=r"^gemini-[a-z0-9.-]+$")
+    fausto_daily_limit: int = Field(default=80, ge=1, le=10000)
 
     def validate_database(self):
         from app.errors import ApiError

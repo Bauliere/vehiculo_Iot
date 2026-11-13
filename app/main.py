@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.api.routes import router
+from app.api.fausto import router as fausto_router
 from app.api.public_control import router as public_control_router
 from app.async_db import run_db
 from app.config import Settings
@@ -17,6 +18,7 @@ from app.errors import ApiError
 from app.services.catalog_service import CatalogService
 from app.services.control_service import ControlService
 from app.services.demo_service import DemoService
+from app.services.fausto_service import FaustoService
 from app.websocket.websocket_manager import WebSocketManager, event
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ class Runtime:
         self.control = ControlService(self.database, self.catalog, self.websocket_manager)
         self.demos = DemoService(self.control)
         self.control.demos = self.demos
+        self.fausto = FaustoService(self.settings, self.demos)
 
 
 def create_app(settings=None, database=None):
@@ -68,6 +71,7 @@ def create_app(settings=None, database=None):
     )
     application.include_router(router)
     application.include_router(public_control_router)
+    application.include_router(fausto_router)
 
     @application.get("/docs", include_in_schema=False, response_class=HTMLResponse)
     def documentation(request: Request):

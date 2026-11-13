@@ -31,11 +31,13 @@ let browser, activePage;
   const url = `http://127.0.0.1:${server.address().port}/vehiculo_Iot/`;
   browser = await chromium.launch({
     headless: true,
-    args: ['--enable-unsafe-swiftshader'],
+    args: ['--enable-unsafe-swiftshader', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
     ...(process.env.BROWSER_PATH ? { executablePath: process.env.BROWSER_PATH } : {})
   });
   const context = await browser.newContext({ viewport: { width:1440, height:1000 } });
   const calls = [], sockets = new Set(), errors = [], reads = { state:0, history:0 };
+  const planId = '0123456789abcdefghijkl';
+  const assistantDemo = { id_demo: 1900000000, fausto_id: planId };
   let rejectControl = false;
   let delayMovementResponse = 0;
   let apiOnline = true, wsOnline = true, stamp = Date.now(), nextRecord = 13;
@@ -86,7 +88,24 @@ let browser, activePage;
       assert.equal(req.method(),'POST');
       if (rejectControl) return route.fulfill({status:401,headers,contentType:'application/json',body:JSON.stringify({detail:'Clave API inválida.'})});
       assert.equal(req.headers()['x-api-key'],KEY);
-      if (path === '/vehiculos/1/movimientos') {
+      if (path.endsWith('/fausto/interpretar')) {
+        const source = req.postDataJSON();
+        if (source.audio) {
+          assert.equal(source.mime, 'audio/webm');
+          assert.ok(Buffer.from(source.audio, 'base64').length > 0);
+        }
+        calls.push(source.audio ? 'fausto:voz' : 'fausto:texto');
+        body = { plan_id: planId, expires_in: 90, respuesta: 'Avance y giro listos.',
+          transcripcion: source.audio ? 'Avanza y gira a la derecha' : '',
+          pasos: [{ comando: 'AVANZAR', duracion_ms: 10000 }, { comando: 'GIRAR_DERECHA', duracion_ms: 500 }] };
+      } else if (path.endsWith(`/fausto/${planId}/ejecutar`)) {
+        calls.push('fausto:ejecutar'); status = 202; body = { estado: 'en_ejecucion' };
+        broadcast(eventFor(9, 'demo_inicio', { ...assistantDemo, total_movimientos: 2 }));
+        broadcast(eventFor(1, 'demo_movimiento', { ...assistantDemo, orden: 1, duracion_ms: 10000, pausa_ms: 120 }));
+      } else if (path.endsWith(`/fausto/${planId}/cancelar`)) {
+        calls.push('fausto:cancelar'); body = { estado: 'cancelada' };
+        broadcast(eventFor(9, 'demo_cancelada', assistantDemo));
+      } else if (path === '/vehiculos/1/movimientos') {
         const id = req.postDataJSON().id_comando;
         assert.equal(req.postDataJSON().origen,'API'); calls.push(id); individual(id);
         body = {id_vehiculo:1,id_comando:id,estado:{...currentState}};
@@ -124,7 +143,7 @@ let browser, activePage;
     assert.ok(layout.scrollWidth<=layout.width+1,`${name}: sin desbordamiento horizontal ${JSON.stringify(layout)}`);
     {
       assert.ok(layout.scrollHeight<=layout.height+1 && layout.bodyScrollHeight<=layout.height+1,`${name}: documento cabe completo ${JSON.stringify(layout)}`);
-      const selectors = control ? ['#joystick','#box-lever','#stop-button','.control-dock','#access-open','#demo-open','[data-command-id="7"]','[data-command-id="8"]'] : ['.latest-panel','.history-table','#history-prev','#history-next'];
+      const selectors = control ? ['#joystick','#box-lever','#stop-button','.control-dock','#access-open','#demo-open','#fausto-open','#fullscreen-button','[data-command-id="7"]','[data-command-id="8"]'] : ['.latest-panel','.history-table','#history-prev','#history-next'];
       for (const selector of selectors) {
         const element=page.locator(selector), box=await element.boundingBox();
         assert.ok(await element.isVisible(),`${name}: ${selector} visible`);
@@ -313,6 +332,33 @@ let browser, activePage;
   assert.deepEqual(calls.slice(beforeTouchHold), ['demo:start'], 'Mantener con un dedo confirma una sola DEMO');
   await page.locator('#stop-button').click();
   await page.waitForFunction(() => document.getElementById('joystick').getAttribute('aria-disabled') === 'false');
+  await page.locator('#fullscreen-button').click();
+  await page.waitForFunction(() => document.documentElement.hasAttribute('data-pilot-fullscreen'));
+  assert.equal(await page.locator('.view-navigation').isVisible(), false);
+  await page.locator('#fullscreen-button').click();
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-pilot-fullscreen'));
+  const beforeChat = calls.length;
+  await page.locator('#fausto-open').click();
+  await page.locator('#fausto-dialog[open]').waitFor();
+  await page.locator('#fausto-input').fill('Oye, avanza 10 segundos y luego gira a la derecha');
+  await page.locator('#fausto-input').press('Enter');
+  await page.locator('#fausto-plan').waitFor();
+  assert.match(await page.locator('#fausto-steps').textContent(), /10 s/);
+  assert.deepEqual(calls.slice(beforeChat), ['fausto:texto']);
+  await page.locator('#fausto-execute').click();
+  await page.waitForFunction(() => document.getElementById('fausto-status').textContent.includes('Recorrido aceptado') ||
+    document.getElementById('fausto-status').textContent.includes('Paso 1'));
+  await page.locator('#fausto-stop').click();
+  await page.waitForFunction(() => document.getElementById('fausto-status').textContent.includes('Detención confirmada'));
+  assert.deepEqual(calls.slice(beforeChat), ['fausto:texto','fausto:ejecutar','fausto:cancelar']);
+  await page.locator('#fausto-mic').click();
+  await page.waitForFunction(() => document.getElementById('fausto-mic').getAttribute('aria-pressed') === 'true');
+  await page.waitForTimeout(450);
+  await page.locator('#fausto-mic').click();
+  await page.locator('#fausto-plan').waitFor();
+  assert.equal(calls.at(-1), 'fausto:voz');
+  await page.screenshot({ path: join(output, 'fausto-dialog.png') });
+  await page.locator('#fausto-close').click();
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:tx,y:ty}]});
   await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:tx,y:ty-touchBox.width*.28}]});await settle();
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await settle();
@@ -387,7 +433,7 @@ let browser, activePage;
     checks:['Subruta Pages','Joystick/palanca ratón teclado toque y parada','Luces y sonido','DEMO y cancelación','REST inicial/eventos externos',
       'Historial máximo10, orden, deduplicación y paginación','DEMO no contamina historial','Reconexión recupera datos perdidos',
       'Doce resoluciones sin scroll','Seis paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
-      'Indicadores independientes','Favicon y créditos'],reads,calls,errors},null,2));
+      'Indicadores independientes','Favicon y créditos','Pantalla completa','Fausto.IA por texto y audio, confirmación y parada'],reads,calls,errors},null,2));
 })().catch(async error=>{
   console.error(error);
   if(activePage){console.log(await activePage.locator('body').innerText());await activePage.screenshot({path:join(output,'failure.png'),fullPage:true});}

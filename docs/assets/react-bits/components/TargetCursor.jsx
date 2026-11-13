@@ -122,8 +122,7 @@ const TargetCursor = ({
       const node = element || document.elementFromPoint(x, y);
       const found = node?.closest?.(s.targetSelector) || null;
       const scope = scopeOf();
-      if (found && (found.matches(':disabled, [aria-disabled="true"]') ||
-        (scope && !scope.contains(found)))) return null;
+      if (found && scope && !scope.contains(found) && !found.closest('dialog[open]')) return null;
       return found;
     };
 
@@ -152,8 +151,7 @@ const TargetCursor = ({
         lockOn(inside ? findTarget(pointer.x, pointer.y, element) : null);
         lastTargetCheck = now;
       }
-      if (target && (!target.isConnected || !target.getClientRects().length ||
-        target.closest('[hidden]') || target.matches(':disabled, [aria-disabled="true"]'))) lockOn(null);
+      if (target && (!target.isConnected || !target.getClientRects().length || target.closest('[hidden]'))) lockOn(null);
       const rect = target ? target.getBoundingClientRect() : null;
       const locked = !!rect && pointer.inside;
       const snapW = 4.6 / s.hoverDuration;
@@ -288,7 +286,9 @@ const TargetCursor = ({
     };
 
     const insideScope = (x, y, element) => {
-      if (element?.closest?.('[data-cursor-ignore], dialog[open]')) return false;
+      if (element?.closest?.('[data-cursor-ignore]')) return false;
+      const dialog = document.querySelector('dialog[open]');
+      if (dialog) return element !== dialog && dialog.contains(element);
       const scope = scopeOf();
       if (!scope) return true;
       if (element && scope.contains(element)) return true;

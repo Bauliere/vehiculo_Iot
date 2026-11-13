@@ -18,6 +18,7 @@ class DemoRun:
     task: asyncio.Task | None = None
     error: str | None = None
     terminal_event: str | None = None
+    fausto_id: str | None = None
 
 
 class DemoService:
@@ -28,13 +29,19 @@ class DemoService:
         self.runs = {}
         self.closing = False
 
-    async def start(self, id_vehiculo, id_demo):
+    async def start(self, id_vehiculo, id_demo, *, prepare=None, fausto_id=None, cancel_event=None):
         async with self.control.lock_for(id_vehiculo):
             if self.closing:
                 raise ApiError(503, "El servidor está cerrando.")
             self.control.ensure_idle(id_vehiculo)
-            movements = await run_db(self.control.prepare_demo, id_vehiculo, id_demo)
-            run = DemoRun(id_demo, movements)
+            if cancel_event is not None and cancel_event.is_set():
+                raise ApiError(409, "El recorrido se canceló antes de iniciar.")
+            movements = await run_db(prepare or self.control.prepare_demo, id_vehiculo, id_demo)
+            if cancel_event is not None and cancel_event.is_set():
+                raise ApiError(409, "El recorrido se canceló antes de iniciar.")
+            run = DemoRun(id_demo, movements, fausto_id=fausto_id)
+            if cancel_event is not None:
+                run.cancel_event = cancel_event
             self.runs[id_vehiculo] = run
             run.task = asyncio.create_task(self._execute(id_vehiculo, run))
         return {"mensaje": "DEMO iniciada.", "id_vehiculo": id_vehiculo,
@@ -58,10 +65,11 @@ class DemoService:
 
     async def _execute(self, id_vehiculo, run):
         manager = self.control.websocket_manager
+        source = {"fausto_id": run.fausto_id} if run.fausto_id else {}
         try:
             await manager.publicar(id_vehiculo, event(
                 "demo_inicio", id_vehiculo, id_demo=run.id_demo,
-                total_movimientos=len(run.movements),
+                total_movimientos=len(run.movements), **source,
             ))
             for movement in run.movements:
                 async with self.control.lock_for(id_vehiculo):
@@ -74,7 +82,7 @@ class DemoService:
                         "demo_movimiento", id_vehiculo, movement["comando"], movement["codigo"],
                         id_demo=run.id_demo, id_demo_movimiento=movement["id_demo_movimiento"],
                         id_comando=movement["id_comando"], orden=movement["orden"],
-                        duracion_ms=movement["duracion_ms"], pausa_ms=movement["pausa_ms"], estado=state,
+                        duracion_ms=movement["duracion_ms"], pausa_ms=movement["pausa_ms"], estado=state, **source,
                     ))
                 try:
                     await asyncio.wait_for(run.cancel_event.wait(),
@@ -88,7 +96,7 @@ class DemoService:
                 run.terminal_event = tipo
                 await manager.publicar(id_vehiculo, event(
                     tipo, id_vehiculo, state.get("comando"), state.get("codigo"),
-                    id_demo=run.id_demo, estado=state,
+                    id_demo=run.id_demo, estado=state, **source,
                 ))
         except Exception as error:
             logger.warning("DEMO finalizada por error (%s).", type(error).__name__)
@@ -100,7 +108,7 @@ class DemoService:
                 detail += " No fue posible persistir DETENER en RDS."
             run.error = detail
             await manager.publicar(id_vehiculo, event(
-                "demo_error", id_vehiculo, id_demo=run.id_demo, detail=detail,
+                "demo_error", id_vehiculo, id_demo=run.id_demo, detail=detail, **source,
             ))
         finally:
             self.runs.pop(id_vehiculo, None)

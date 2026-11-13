@@ -17,7 +17,8 @@ key_header = APIKeyHeader(
 PUBLIC_CONTROL_TTL = 15 * 60
 _TOKEN_PREFIX = "v1"
 _CONTROL_PATH = re.compile(
-    r"^/vehiculos/([1-9][0-9]*)/(?:movimientos|demos/[1-9][0-9]*/(?:iniciar|cancelar))$"
+    r"^/vehiculos/([1-9][0-9]*)/(?:movimientos|demos/[1-9][0-9]*/(?:iniciar|cancelar)"
+    r"|fausto/(?:interpretar|[A-Za-z0-9_-]{22}/(?:ejecutar|cancelar)))$"
 )
 
 

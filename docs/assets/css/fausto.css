@@ -1,0 +1,249 @@
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: clamp(4px, 1vw, 10px);
+}
+
+@media (max-width: 900px) {
+  .app-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .header-tools .icon-button { width: 34px; height: 34px; }
+}
+
+@media (max-width: 900px) and (max-height: 670px) and (orientation: portrait) {
+  .control-dock :is(.dock-button, .extra-control) { min-height: 43px; }
+  #fausto-open img { width: 20px; height: 20px; }
+  .header-tools .icon-button { width: 32px; height: 32px; }
+}
+
+html[data-pilot-fullscreen] .view-navigation,
+html[data-pilot-fullscreen] .app-footer {
+  display: none;
+}
+
+.control-dock {
+  grid-template-columns: 2fr repeat(3, minmax(0, 1fr));
+}
+
+#fausto-open img,
+.fausto-heading img {
+  object-fit: cover;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+}
+
+.monitor-foil {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  transition: opacity .25s ease;
+  background:
+    radial-gradient(ellipse at var(--tilt-light-x, 50%) var(--tilt-light-y, 50%),
+      color-mix(in srgb, var(--accent-strong) 15%, transparent), transparent 70%);
+}
+
+:root[data-theme="rose"] .monitor-foil { mix-blend-mode: multiply; }
+:root[data-theme="rose"] .monitor-foil::before { filter: grayscale(1) contrast(4) invert(1); }
+
+.monitor-foil::before {
+  content: "";
+  position: absolute;
+  right: 3%;
+  top: 50%;
+  width: min(34%, 205px);
+  height: min(92%, 205px);
+  transform: translateY(-50%);
+  background: url("../images/fausto.png") center / contain no-repeat;
+  mix-blend-mode: screen;
+  filter: grayscale(1) contrast(4);
+  opacity: .54;
+}
+
+.monitor-foil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(140deg, transparent 0 3px, #ffffff10 4px 5px, transparent 6px 12px),
+    conic-gradient(from 35deg at var(--tilt-light-x, 50%) var(--tilt-light-y, 50%),
+      #adc8ff12, var(--accent), #c5acff34, #ffddad28, #adc8ff12);
+  mix-blend-mode: color-dodge;
+  opacity: .22;
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  [data-tilting] > .monitor-foil { opacity: var(--tilt-foil, 0); }
+}
+
+.fausto-dialog {
+  width: min(540px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: clamp(10px, 3dvh, 22px);
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: linear-gradient(155deg, var(--surface), var(--surface-deep)), var(--bg);
+  box-shadow: 0 20px 90px #0008;
+  overflow: hidden;
+}
+
+.fausto-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.6dvh, 14px);
+}
+
+.fausto-dialog::backdrop {
+  background: #07090cc9;
+  backdrop-filter: blur(9px);
+}
+
+.fausto-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.fausto-heading h2 { font-size: 20px; margin: 0; }
+.fausto-heading p { color: var(--muted); margin: 1px 0 0; font-size: 12px; }
+
+.fausto-chat {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: 4px;
+  scrollbar-width: thin;
+}
+
+.fausto-messages { display: grid; gap: 8px; }
+
+.fausto-message {
+  width: fit-content;
+  max-width: 93%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px 12px 12px 4px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fausto-message[data-user] {
+  justify-self: end;
+  border-radius: 12px 12px 4px 12px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.fausto-example {
+  margin-top: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--accent-strong);
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+}
+
+.fausto-thinking {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+
+.fausto-thinking i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-strong);
+  animation: fausto-spin .8s linear infinite;
+}
+
+.fausto-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.fausto-plan ol { padding-inline-start: 20px; margin: 0; }
+.fausto-plan .btn { min-height: 36px; font-size: 13px; }
+.fausto-status { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.fausto-status:empty { display: none; }
+
+.fausto-composer {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-deep));
+  flex-shrink: 0;
+}
+
+.fausto-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  max-height: 80px;
+  resize: vertical;
+  padding: 8px 6px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.fausto-composer textarea::placeholder { color: var(--muted); }
+.fausto-composer :is(.btn, .icon-button) { height: 40px; min-width: 40px; padding: 0 8px; }
+.fausto-composer .btn { flex: 0 0 40px; }
+.fausto-composer svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.fausto-mic { display: inline-flex; align-items: center; gap: 5px; }
+.fausto-mic[aria-pressed=true] { width: auto; color: var(--accent-strong); border-radius: 24px; }
+.voice-wave { display: none; gap: 2px; align-items: center; height: 16px; }
+.fausto-mic[aria-pressed=true] .voice-wave { display: flex; }
+.voice-wave i { width: 2px; height: 100%; background: currentColor; border-radius: 4px; animation: fausto-wave .65s alternate infinite; }
+.voice-wave i:nth-child(2n) { animation-delay: -.3s; }
+.voice-wave i:nth-child(3n) { animation-delay: -.48s; }
+#fausto-clock { font: 11px ui-monospace, monospace; }
+.fausto-dialog .fausto-stop { min-height: 35px; width: fit-content; margin-inline-start: auto; flex: 0 0 auto; font-size: 12px; }
+
+@keyframes fausto-spin { to { transform: rotate(360deg); } }
+@keyframes fausto-wave { from { transform: scaleY(.25); } to { transform: scaleY(1); } }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .control-dock { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .control-dock .dock-button { font-size: clamp(8px, 1.4vw, 10px); padding-inline: 1px; }
+  .header-tools .icon-button { width: 32px; height: 32px; }
+}
+
+@media (max-width: 400px) {
+  .control-dock { gap: 3px; }
+  .control-dock .dock-button { font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fausto-thinking i, .voice-wave i { animation: none; }
+}

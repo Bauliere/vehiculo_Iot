@@ -44,7 +44,8 @@ export class ApiClient {
     return this.sessionPromise;
   }
 
-  async request(path, { method = 'GET', body, signal, authorized = false, retried = false } = {}) {
+  async request(path, { method = 'GET', body, signal, authorized = false, retried = false,
+    timeoutMs = this.timeoutMs, keepalive = false } = {}) {
     if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')
         || path.includes('\\') || path.includes('..')) {
       throw new ApiError('La ruta del servicio no es válida.', { code: 'CONFIG' });
@@ -60,14 +61,14 @@ export class ApiClient {
     const cancel = () => controller.abort();
     signal?.addEventListener('abort', cancel, { once: true });
     if (signal?.aborted) cancel();
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, this.timeoutMs);
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
       const headers = { Accept: 'application/json' };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (authorized) headers['X-API-Key'] = this.#key;
       const response = await this.fetch(`${this.baseUrl}${path}`, {
         method, headers, body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error',
+        signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error', keepalive,
       });
       let data = null;
       let validJson = false;
@@ -81,7 +82,7 @@ export class ApiClient {
         // Un 401 se rechaza antes de ejecutar la orden. Solo ese caso se reintenta.
         if (response.status === 401 && authorized && this.automaticVehicleId && !retried) {
           await this.connectControl({ force: true });
-          return this.request(path, { method, body, signal, authorized, retried: true });
+          return this.request(path, { method, body, signal, authorized, retried: true, timeoutMs, keepalive });
         }
         // Solo un JSON de diagnóstico explícito permite atribuir un fallo a RDS.
         const diagnostic = validJson && data !== null && typeof data === 'object'
@@ -139,6 +140,19 @@ export class ApiClient {
   cancelDemo(vehicleId, demoId, { signal } = {}) {
     return this.request(`${this.demoPath(vehicleId, demoId)}/cancelar`, {
       method: 'POST', authorized: true, signal,
+    });
+  }
+  interpretFausto(vehicleId, body, signal) {
+    return this.request(`${this.vehiclePath(vehicleId)}/fausto/interpretar`, {
+      method: 'POST', authorized: true, body, signal, timeoutMs: 20000,
+    });
+  }
+  faustoPlan(vehicleId, planId, action) {
+    if (!/^[A-Za-z0-9_-]{22}$/.test(planId) || !['ejecutar', 'cancelar'].includes(action)) {
+      throw new ApiError('Identificador de plan inválido.', { code: 'VALIDATION' });
+    }
+    return this.request(`${this.vehiclePath(vehicleId)}/fausto/${planId}/${action}`, {
+      method: 'POST', authorized: true, keepalive: action === 'cancelar',
     });
   }
   health(options) { return this.request('/health', options); }

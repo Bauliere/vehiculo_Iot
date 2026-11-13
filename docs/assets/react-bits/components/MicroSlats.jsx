@@ -416,6 +416,8 @@ const MicroSlats = ({
   lean = 0,
   lightWaves = 0,
   pointerLight = false,
+  fluidTrail = false,
+  pulseSize = cursorSize,
   touchPulse = false,
   intro = true,
   introDuration = 1.5,
@@ -463,6 +465,8 @@ const MicroSlats = ({
       lean,
       lightWaves,
       pointerLight,
+      fluidTrail,
+      pulseSize,
       touchPulse,
       intro,
       introDuration,
@@ -668,7 +672,8 @@ const MicroSlats = ({
     };
 
     const buildFluid = () => {
-      if (!floatTargets || !settingsRef.current?.interactive || settingsRef.current.pointerLight) return;
+      const s = settingsRef.current;
+      if (!floatTargets || !s?.interactive || (s.pointerLight && !s.fluidTrail)) return;
       const aspect = width / height;
       const w = Math.max(8, Math.round(aspect >= 1 ? FLUID_SIZE * aspect : FLUID_SIZE));
       const h = Math.max(8, Math.round(aspect >= 1 ? FLUID_SIZE : FLUID_SIZE / aspect));
@@ -886,12 +891,12 @@ const MicroSlats = ({
         particles[offset + 3] = s.cursorStrength * (1 - age) ** 1.65 * (0.48 + 0.52 * Math.min(1, age * 7));
       });
       fieldUniforms.uSmokeCount.value = smoke.length;
-      fieldUniforms.uPointerRadius.value = s.cursorSize;
+      fieldUniforms.uPointerRadius.value = s.pulseSize;
       const clickProgress = clamp((now - clickLight.startedAt) / CLICK_LIGHT_MS, 0, 1);
       const pulse = fieldUniforms.uClickLight.value;
       pulse[0] = clickLight.x;
       pulse[1] = clickLight.y;
-      pulse[2] = s.cursorSize * (0.25 + 3.1 * (1 - Math.pow(1 - clickProgress, 2)));
+      pulse[2] = s.pulseSize * (0.25 + 3.1 * (1 - Math.pow(1 - clickProgress, 2)));
       pulse[3] = s.pointerLight ? 0.95 * (1 - Math.pow(clickProgress, 1.8)) : 0;
       fieldUniforms.uLightWaves.value = clamp(s.lightWaves, 0, 1.15);
       renderer.render({ scene: fieldMesh, target: fieldTarget });
@@ -958,7 +963,7 @@ const MicroSlats = ({
       const previousX = pointer.x;
       const previousY = pointer.y;
       const spot = trackPointer(e);
-      if (!spot || !wasTracked || !settingsRef.current.pointerLight) return;
+      if (!spot || !wasTracked || fluid || !settingsRef.current.pointerLight) return;
       const dx = spot.x - previousX;
       const dy = spot.y - previousY;
       const distance = Math.hypot(dx, dy);

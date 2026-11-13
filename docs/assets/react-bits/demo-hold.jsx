@@ -22,7 +22,7 @@ export function mountDemoHold(host, onConfirm, durationMs) {
       textColor="var(--accent-strong)"
       fillColor="var(--accent)"
       fillTextColor="var(--ink)"
-      fillDirection="up"
+      fillDirection="right"
       waveAmplitude={3}
       glow={false}
       resetAfter={450}
