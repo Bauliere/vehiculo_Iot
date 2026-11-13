@@ -302,14 +302,15 @@ void main() {
   float haze = mix(1.0, 1.0 - uFog, pow(1.0 - v, 1.4));
   float light = (pow(level, uContrast) + glint * 0.8) * haze;
   float glow = 1.0 - exp(-max(ink, 0.0) * uInk * 1.6);
-  // Nubes anchas con bordes irregulares, dibujadas en la misma pasada que las piezas.
+  // Capas de humo que se deforman y avanzan a velocidades distintas.
   vec2 uv = center / uSize;
   vec2 field = vec2(uv.x * uSize.x / uSize.y, uv.y);
-  float drift = smokeNoise(field * 5.7 + vec2(-uTime * 0.32, uTime * 0.2));
-  float curl = smokeNoise(field * 13.0 + vec2(drift * 1.4, -uTime * 0.44));
-  float phase = uv.y * 6.2 + uv.x * 2.8 - uTime * 1.2 + drift * 1.42 + curl * 0.38;
-  float cloud = pow(0.5 + 0.5 * cos(phase), 2.1);
-  float wave = smoothstep(0.05, 0.9, cloud * (0.78 + 0.33 * drift) + 0.11 * curl) * uLightWaves;
+  float drift = smokeNoise(field * 4.1 + vec2(-uTime * 0.32, uTime * 0.19));
+  float curl = smokeNoise(field * 6.7 + vec2(uTime * 0.2 + 4.3, -uTime * 0.26));
+  vec2 warped = field * vec2(5.8, 4.5) + vec2(curl * 1.4, drift * 1.8);
+  float bank = smokeNoise(warped + vec2(-uTime * 0.68, uTime * 0.29));
+  float edge = smokeNoise(warped * 2.3 + vec2(drift * 1.7, -uTime * 0.47));
+  float wave = smoothstep(-0.24, 0.62, bank * 0.76 + edge * 0.24) * uLightWaves;
   float smoke = 0.0;
   for (int i = 0; i < ${SMOKE_POINTS}; i++) {
     if (i >= uSmokeCount) break;
@@ -415,6 +416,7 @@ const MicroSlats = ({
   lean = 0,
   lightWaves = 0,
   pointerLight = false,
+  touchPulse = false,
   intro = true,
   introDuration = 1.5,
   paused = false,
@@ -461,6 +463,7 @@ const MicroSlats = ({
       lean,
       lightWaves,
       pointerLight,
+      touchPulse,
       intro,
       introDuration,
       paused
@@ -879,7 +882,7 @@ const MicroSlats = ({
         const offset = index * 4;
         particles[offset] = puff.x + (Math.sin(puff.x * 0.047 + age * 4.0) * 32 + 13) * age;
         particles[offset + 1] = puff.y - (31 + 22 * age) * age;
-        particles[offset + 2] = s.cursorSize * (0.21 + 0.46 * age);
+        particles[offset + 2] = s.cursorSize * 1.4 * (0.21 + 0.46 * age);
         particles[offset + 3] = s.cursorStrength * (1 - age) ** 1.65 * (0.48 + 0.52 * Math.min(1, age * 7));
       });
       fieldUniforms.uSmokeCount.value = smoke.length;
@@ -971,16 +974,31 @@ const MicroSlats = ({
       if (smoke.length > SMOKE_POINTS) smoke.splice(0, smoke.length - SMOKE_POINTS);
     };
 
+    const startClickLight = spot => {
+      clickLight.x = spot.x;
+      clickLight.y = spot.y;
+      clickLight.startedAt = performance.now();
+      start();
+    };
+
     const onPointerDown = e => {
       if (e.button !== 0) return;
+      const s = settingsRef.current;
+      if (e.pointerType === 'touch') {
+        if (!e.isPrimary || !s?.touchPulse || !s.pointerLight || reducedMotion || document.querySelector('dialog[open]')) return;
+        const target = e.target;
+        if (target.closest('button, a, input, select, textarea, label, [role="button"], [data-cursor-ignore], .app-header, .connection-strip, .drive-module, .box-module, .control-dock, .monitor-heading, .app-footer')) return;
+        // En horizontal, el panel principal usa display: contents y deja libres sus huecos.
+        if (target.closest('.glass-panel')?.getClientRects().length) return;
+        const spot = locate(e);
+        if (spot.inside) startClickLight(spot);
+        return;
+      }
       const spot = trackPointer(e);
       if (!spot) return;
-      if (settingsRef.current.pointerLight) {
-        clickLight.x = spot.x;
-        clickLight.y = spot.y;
-        clickLight.startedAt = performance.now();
-      }
-      else if (fluid) {
+      if (s.pointerLight) {
+        startClickLight(spot);
+      } else if (fluid) {
         splashTurn += 2.39996;
         queue(spot.u, spot.v, 0, 0, splashTurn);
       }

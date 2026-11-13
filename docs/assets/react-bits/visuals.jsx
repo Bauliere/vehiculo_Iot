@@ -7,8 +7,8 @@ import TargetCursor from './components/TargetCursor.jsx';
 import WarpText from './components/WarpText.jsx';
 import { mountCardTilt } from './card-tilt.js';
 
-// El paso de la cuadrícula se reduce en ambos ejes para ganar un 10 % de piezas por área.
-const SLAT_SCALE = 1 / Math.sqrt(1.1);
+// Conserva la separación de la cuadrícula anterior al agrandar las piezas.
+const SLAT_GAP_SCALE = 1 / Math.sqrt(1.1);
 
 class VisualBoundary extends Component {
   state = { failed: false };
@@ -159,17 +159,18 @@ export function mountVisuals(document) {
       glintColor={palette['accent-strong']}
       backgroundColor={palette.bg}
       speed={small.matches ? 0.48 : 0.58}
-      slatWidth={(small.matches ? 5 : 8) * SLAT_SCALE}
-      slatHeight={(small.matches ? 13 : 21) * SLAT_SCALE}
-      gap={(small.matches ? 2 : 3) * SLAT_SCALE}
+      slatWidth={small.matches ? 7 : 11.5}
+      slatHeight={small.matches ? 18 : 30}
+      gap={(small.matches ? 2 : 3) * SLAT_GAP_SCALE}
       contrast={1.12}
-      stretch={0.11}
+      stretch={0}
       glint={0.72}
       fog={0.27}
       perspective={0.6}
       lightWaves={1.0925}
       interactive={mouse.matches}
       pointerLight
+      touchPulse
       cursorStrength={0.85}
       cursorSize={small.matches ? 92 : 140}
       intro={false}
