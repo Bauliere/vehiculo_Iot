@@ -1,5 +1,7 @@
 import { commandLabel } from '../domain/catalog.js';
 
+const RELEASE_WAIT_MS = 200;
+
 /** Coordina órdenes, DEMO y parada. Un resultado antiguo nunca cambia la acción actual. */
 export class ControlController {
   constructor(api, vehicleId, catalog, state, { canOperate = () => true, onNeutral = () => {} } = {}) {
@@ -8,6 +10,7 @@ export class ControlController {
     this.pending = null;
     this.inFlight = null;
     this.stopPromise = null;
+    this.expediteStop = null;
     this.keepGestureDuringStop = false;
     this.demoId = null;
     this.selectedDemoId = null;
@@ -24,7 +27,7 @@ export class ControlController {
   }
 
   requestDirection(direction) {
-    if (direction === 'stop') return this.stop({ keepGesture: true });
+    if (direction === 'stop') return this.releaseControl({ keepGesture: true });
     const command = this.catalog.direction(direction);
     if (command) this.requestCommand(command.id_comando);
   }
@@ -58,11 +61,13 @@ export class ControlController {
     this.pending = null;
     try { this.permitted(); } catch (error) { this.error(error); return; }
     const revision = this.newIntent(command, commandLabel(command));
-    const operation = this.api.move(this.vehicleId, command.id_comando);
+    const operation = this.api.move(this.vehicleId, command.id_comando).then(result => {
+      this.validateMovement(result, command);
+      return result;
+    });
     this.inFlight = operation;
     try {
-      const result = await operation;
-      this.validateMovement(result, command);
+      await operation;
       if (revision === this.revision) this.state.update({ phase: 'idle', authError: null, authValidated: true, http: 'Aceptado por API · HTTP 200',
         message: 'Orden aceptada. Comprueba su evento WSS.', tone: 'success' });
     } catch (error) {
@@ -118,13 +123,38 @@ export class ControlController {
     } catch (error) { this.error(error); }
   }
 
-  stop({ keepGesture = false } = {}) {
+  releaseControl({ keepGesture = false } = {}) {
+    if (!this.stopPromise && !this.pending && !this.inFlight && !this.state.value.commandId && !this.demoId) return;
+    return this.stop({ keepGesture, release: true });
+  }
+
+  waitForMovement(operation) {
+    return new Promise(resolve => {
+      const finish = acknowledged => {
+        clearTimeout(timer);
+        this.expediteStop = null;
+        resolve(acknowledged);
+      };
+      const timer = setTimeout(() => finish(false), RELEASE_WAIT_MS);
+      const expedite = () => finish(false);
+      this.expediteStop = expedite;
+      operation.then(
+        () => { if (this.expediteStop === expedite) finish(true); },
+        () => { if (this.expediteStop === expedite) finish(false); },
+      );
+    });
+  }
+
+  stop({ keepGesture = false, release = false } = {}) {
     clearTimeout(this.timer);
     this.pending = null;
     if (!keepGesture) this.onNeutral();
     if (!this.stopPromise) this.keepGestureDuringStop = keepGesture;
     else if (!keepGesture) this.keepGestureDuringStop = false;
-    if (this.stopPromise) return this.stopPromise;
+    if (this.stopPromise) {
+      if (!release) this.expediteStop?.();
+      return this.stopPromise;
+    }
     if (!this.api.hasKey()) { this.error(new Error('No hay sesión de control para solicitar DETENER.')); return Promise.resolve(false); }
     const command = this.catalog.direction('stop');
     if (!command) { this.error(new Error('No se encontró DETENER en el catálogo. Vuelve a comprobar la conexión.')); return Promise.resolve(false); }
@@ -146,15 +176,20 @@ export class ControlController {
       }
     };
     this.stopPromise = (async () => {
+      // Al soltar, una confirmación rápida permite ordenar los dos POST.
+      // El botón DETENER y la pérdida de conexión interrumpen esta espera.
+      const movementAcknowledged = preceding && release && !demoId
+        ? await this.waitForMovement(preceding)
+        : false;
       let result;
       let failure;
       try {
         await cancel(this.demoId || demoId);
         result = await sendStop();
       } catch (error) { failure = error; }
-      // El POST anterior pudo terminar después del primer STOP: reafirmar la parada.
+      // Reafirma cuando no se pudo confirmar el movimiento antes del primer STOP.
       // No se abortan escrituras fingiendo que abortar Fetch revierte una transacción.
-      if (preceding) {
+      if (preceding && !movementAcknowledged) {
         await preceding.catch(() => {});
         try { await cancel(this.demoId || demoId); result = await sendStop(); failure = null; }
         catch (error) { failure = error; }

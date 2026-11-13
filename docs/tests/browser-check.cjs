@@ -24,7 +24,7 @@ const names = ['AVANZAR', 'RETROCEDER', 'GIRAR_IZQUIERDA', 'GIRAR_DERECHA', 'SUB
 const commands = names.map((nombre, i) => ({ nombre, id_comando: i + 1, codigo: i + 1, id_vehiculo: 1, activo: 1 }));
 const vehicle = { id_vehiculo: 1, nombre: 'Maquina de carga', modelo: 'Control de carga RC', activo: 1 };
 const demos = [{ id_demo: 1, id_vehiculo: 1, nombre: 'Recorrido de evaluación', descripcion: 'Secuencia del servidor', activo: 1 }];
-const dimensions = [['desktop',1440,1000],['mobile',390,844],['small',320,568],['compact',360,640],['landscape',844,390],['small-landscape',667,375],['large-landscape',932,430],['wide-landscape',1024,480],['tablet',768,1024]];
+const dimensions = [['desktop',1440,1000],['laptop',1366,620],['short-laptop',1024,520],['mobile',390,844],['small',320,568],['compact',360,640],['landscape',844,390],['small-landscape',667,375],['landscape-with-toolbar',810,280],['large-landscape',932,430],['wide-landscape',1024,480],['tablet',768,1024]];
 let browser, activePage;
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -33,6 +33,7 @@ let browser, activePage;
   const context = await browser.newContext({ viewport: { width:1440, height:1000 } });
   const calls = [], sockets = new Set(), errors = [], reads = { state:0, history:0 };
   let rejectControl = false;
+  let delayMovementResponse = 0;
   let apiOnline = true, wsOnline = true, stamp = Date.now(), nextRecord = 13;
   const nextTime = () => (stamp = Math.max(Date.now(), stamp + 1));
   const stateFor = (id, epoch = nextTime()) => ({ id_vehiculo:1, vehiculo:vehicle.nombre, id_comando:id,
@@ -85,6 +86,9 @@ let browser, activePage;
         const id = req.postDataJSON().id_comando;
         assert.equal(req.postDataJSON().origen,'API'); calls.push(id); individual(id);
         body = {id_vehiculo:1,id_comando:id,estado:{...currentState}};
+        if (id !== 9 && delayMovementResponse) {
+          await new Promise(resolve => setTimeout(resolve, delayMovementResponse));
+        }
       } else if (path.endsWith('/iniciar')) {
         calls.push('demo:start'); status=202; body={id_vehiculo:1,id_demo:1,estado:'en_ejecucion'};
         broadcast({tipo:'demo_inicio',id_vehiculo:1,timestamp:new Date(nextTime()).toISOString(),id_demo:1,total_movimientos:2});
@@ -107,13 +111,22 @@ let browser, activePage;
   const assertFits = async (name,control=true) => {
     const layout = await page.evaluate(()=>({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,bodyScrollHeight:document.body.scrollHeight,scrollY}));
     assert.ok(layout.scrollWidth<=layout.width+1,`${name}: sin desbordamiento horizontal ${JSON.stringify(layout)}`);
-    if (layout.width<=900 || (layout.width<=1200 && layout.height<=500)) {
-      assert.ok(layout.scrollHeight<=layout.height+1 && layout.bodyScrollHeight<=layout.height+1,`${name}: documento móvil cabe completo ${JSON.stringify(layout)}`);
+    {
+      assert.ok(layout.scrollHeight<=layout.height+1 && layout.bodyScrollHeight<=layout.height+1,`${name}: documento cabe completo ${JSON.stringify(layout)}`);
       const selectors = control ? ['#joystick','#box-lever','#stop-button','.control-dock','#access-open','#demo-open','[data-command-id="7"]','[data-command-id="8"]'] : ['.latest-panel','.history-table','#history-prev','#history-next'];
       for (const selector of selectors) {
         const element=page.locator(selector), box=await element.boundingBox();
         assert.ok(await element.isVisible(),`${name}: ${selector} visible`);
         assert.ok(box && box.x>=-1 && box.y>=-1 && box.x+box.width<=layout.width+1 && box.y+box.height<=layout.height+1,`${name}: ${selector} completo, no recortado ${JSON.stringify(box)}`);
+      }
+      const footer = await page.locator('.app-footer').boundingBox();
+      const content = await page.locator(control ? '.control-dock' : '.history-panel').boundingBox();
+      assert.ok(content.y + content.height <= footer.y + 1, `${name}: el contenido no tapa el pie`);
+      if (control && name.includes('landscape')) {
+        const joystick = await page.locator('#joystick').boundingBox();
+        const lever = await page.locator('#box-lever').boundingBox();
+        assert.ok(joystick.width >= layout.height * .5, `${name}: joystick aprovecha la altura disponible`);
+        assert.ok(content.x > lever.x + lever.width, `${name}: acciones al costado`);
       }
       await page.mouse.wheel(0,700); await page.waitForTimeout(80);
       assert.equal(await page.evaluate(()=>scrollY),0,`${name}: no desplaza el documento`);
@@ -135,6 +148,15 @@ let browser, activePage;
   await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y-70);await settle();
   await page.mouse.move(x,y);await settle();await page.mouse.move(x,y+70);await settle();await page.mouse.up();await settle();
   assert.deepEqual(calls.slice(-4),[1,9,2,9],'Cruzar neutral conserva el gesto');
+  const beforeRelease = calls.length;
+  delayMovementResponse = 110;
+  await area.focus();
+  await page.keyboard.down('ArrowUp');
+  await page.waitForFunction(() => document.getElementById('action-http').textContent === 'Enviando…');
+  await page.keyboard.up('ArrowUp');
+  await page.waitForFunction(() => document.getElementById('action-http').textContent === 'DETENER aceptado · HTTP 200');
+  assert.deepEqual(calls.slice(beforeRelease), [1,9], 'Soltar durante un POST confirmado a tiempo registra un solo DETENER');
+  delayMovementResponse = 0;
   const lever=page.locator('#box-lever'); let rail=await lever.boundingBox();
   await page.mouse.move(rail.x+rail.width/2,rail.y+rail.height*.12);await page.mouse.down();await settle();
   assert.equal(await lever.getAttribute('aria-valuetext'),'Subir caja');
@@ -201,7 +223,7 @@ let browser, activePage;
   await view('control');
   assert.equal(await page.locator('#theme-button img').evaluate(el=>el.complete&&el.naturalWidth>0),true);
   const beforeThemes=calls.length, accents=[];
-  for(const theme of ['forest','violet','eva','rose']){
+  for(const theme of ['forest','violet','eva','rose','red']){
     assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
     accents.push(await page.locator('#api-status .status-dot').evaluate(el=>getComputedStyle(el).backgroundColor));
     for(const [size,width,height]of[['desktop',1440,1000],['mobile',390,844]]){
@@ -210,8 +232,12 @@ let browser, activePage;
     }
     await page.locator('#theme-button').click();
   }
-  assert.equal(new Set(accents).size,4,'Indicadores con cuatro acentos');
+  assert.equal(new Set(accents).size,5,'Indicadores con cinco acentos');
   assert.equal(calls.length,beforeThemes,'Cambiar tema no envía órdenes');
+  await page.setViewportSize({width:1024,height:520});
+  await openPanel('session');
+  assert.equal(await page.locator('#control-sheet').evaluate(el=>el.open),true);
+  await closeSheet();
   for(const[name,width,height]of dimensions){
     await page.setViewportSize({width,height});await view('control');await settle();await assertFits(name);
     await page.screenshot({path:join(output,`${name}.png`),fullPage:true});
@@ -276,7 +302,7 @@ let browser, activePage;
   console.log(JSON.stringify({date:new Date().toISOString(),target:'Frontend local con REST/WSS interceptados. Sin POST reales.',browser:await browser.version(),
     checks:['Subruta Pages','Joystick/palanca ratón teclado toque y parada','Luces y sonido','DEMO y cancelación','REST inicial/eventos externos',
       'Historial máximo10, orden, deduplicación y paginación','DEMO no contamina historial','Reconexión recupera datos perdidos',
-      'Nueve resoluciones con controles completos y sin scroll en móvil','Cuatro paletas','401 y recuperación STOP','Sin almacenamiento de claves',
+      'Doce resoluciones sin scroll','Cinco paletas','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
       'Indicadores independientes','Favicon y créditos'],reads,calls,errors},null,2));
 })().catch(async error=>{
   console.error(error);

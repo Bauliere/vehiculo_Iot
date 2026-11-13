@@ -4,6 +4,7 @@ export class Navigation {
     Object.assign(this, { document, onView, onPanel, onResize });
     this.window = document.defaultView;
     this.mobile = this.window.matchMedia('(max-width: 900px), (max-height: 500px) and (max-width: 1200px), (max-height: 500px) and (pointer: coarse)');
+    this.shortDesktop = this.window.matchMedia('(max-height: 650px)');
     this.dialog = document.getElementById('control-sheet');
     this.currentView = 'control';
     this.currentCard = null;
@@ -51,8 +52,7 @@ export class Navigation {
     this.onPanel(name);
     const details = card.querySelector('details');
     if (details) details.open = true;
-    if (!this.mobile.matches) {
-      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (!this.mobile.matches && !this.shortDesktop.matches && name !== 'activity') {
       (card.querySelector('input, select, button') ?? card).focus({ preventScroll: true });
       return;
     }

@@ -26,9 +26,9 @@ La dirección de la API y el vehículo se configuran en `assets/js/config.js`. E
 3. Usa el joystick o las flechas del teclado. Al soltar se envía **DETENER**. La palanca sube y baja la caja; la barra inferior contiene luces y sonido.
 4. Abre **DEMO** para consultar el recorrido seleccionado, iniciarlo o cancelarlo. La DEMO 1 se selecciona al cargar cuando está disponible. **DETENER** también cancela la DEMO conocida.
 
-Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01 y Rosa claro. La paleta se recuerda en el navegador. **Ajustes → Reconectar** recupera el acceso si falló la conexión inicial.
+Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01, Rosa claro y Rojo grafito. La paleta se recuerda en el navegador. **Ajustes → Reconectar** recupera el acceso si falló la conexión inicial.
 
-En móvil, CONTROL ocupa la pantalla completa. Ajustes y DEMO se abren aparte; MONITOREO permite revisar el historial por páginas. En escritorio se conservan los paneles completos. Las respuestas de la última acción se consultan en MONITOREO.
+Las dos vistas caben en la pantalla. En teléfono horizontal, DETENER y las funciones adicionales están al costado. MONITOREO pagina el historial según el espacio disponible. El botón con la onda abre las confirmaciones de la última acción.
 
 MONITOREO carga estado e historial por REST. Los eventos individuales WSS disparan una consulta del historial confirmado; al reconectar se recuperan ambos datos. Los pasos de DEMO cambian el último estado, pero no se añaden al historial individual.
 

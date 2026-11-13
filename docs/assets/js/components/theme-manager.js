@@ -3,6 +3,7 @@ const THEMES = Object.freeze([
   { id: 'violet', name: 'Gris violeta', color: '#14131b' },
   { id: 'eva', name: 'EVA-01', color: '#100d19' },
   { id: 'rose', name: 'Rosa claro', color: '#fff6fa' },
+  { id: 'red', name: 'Rojo grafito', color: '#17181b' },
 ]);
 const STORAGE_KEY = 'control-iot-theme';
 

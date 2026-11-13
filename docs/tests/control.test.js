@@ -48,6 +48,34 @@ test('DETENER se envía sin esperar movimiento pendiente y se reafirma al resolv
   assert.equal(state.value.requested,'DETENER');
   assert.equal(state.value.phase,'idle');
 });
+test('volver a neutral y soltar un movimiento en curso produce una sola parada si llega su confirmación', async () => {
+  const pending = deferred();
+  const { control, calls, api } = setup();
+  const move = api.move;
+  api.move = (v, c) => c === 1 ? (calls.push('move:1'), pending.promise) : move(v, c);
+  const movement = send(control, 1);
+  const neutral = control.requestDirection('stop');
+  assert.equal(control.releaseControl(), neutral);
+  assert.deepEqual(calls, ['move:1']);
+  pending.resolve({ id_vehiculo: 1, id_comando: 1 });
+  await Promise.all([movement, neutral]);
+  assert.equal(control.releaseControl(), undefined);
+  assert.deepEqual(calls, ['move:1', 'move:9']);
+});
+test('el botón DETENER interrumpe la espera de confirmación al soltar', async () => {
+  const pending = deferred();
+  const { control, calls, api } = setup();
+  const move = api.move;
+  api.move = (v, c) => c === 1 ? (calls.push('move:1'), pending.promise) : move(v, c);
+  const movement = send(control, 1);
+  const release = control.releaseControl();
+  assert.equal(control.stop(), release);
+  await tick();
+  assert.deepEqual(calls, ['move:1', 'move:9']);
+  pending.resolve({ id_vehiculo: 1, id_comando: 1 });
+  await Promise.all([movement, release]);
+  assert.deepEqual(calls, ['move:1', 'move:9', 'move:9']);
+});
 test('cancelar mientras el inicio está pendiente vuelve a cancelar después del HTTP 202', async () => {
   const start = deferred();
   const {control,calls,api,state} = setup();

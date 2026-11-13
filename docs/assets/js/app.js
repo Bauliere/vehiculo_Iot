@@ -24,6 +24,7 @@ class ControlApplication {
     this.feedback = new ControlFeedback(document, CONFIG.vehicleId);
     this.sessionLoading = false;
     this.monitorView = new MonitorView(document);
+    this.historyResize = new ResizeObserver(() => this.resizeMonitor());
     this.monitor = new MonitorController(this.api, CONFIG.vehicleId, {
       onChange: value => this.monitorView.render(value),
     });
@@ -54,12 +55,12 @@ class ControlApplication {
         if (direction !== 'stop') this.lever?.reset();
         this.controller.requestDirection(direction);
       },
-      onRelease: () => void this.controller.stop(),
+      onRelease: () => void this.controller.releaseControl(),
     });
     this.joystick.setEnabled(false);
     this.lever = new BoxLever(this.view.get('box-lever'), {
       onDirection: direction => {
-        if (direction === 'stop') { void this.controller.stop({ keepGesture: true }); return; }
+        if (direction === 'stop') { void this.controller.releaseControl({ keepGesture: true }); return; }
         this.joystick.reset();
         const name = direction === 'up' ? 'SUBIR_CAJA' : 'BAJAR_CAJA';
         const command = this.catalog.all().find(item => item.nombre === name);
@@ -69,7 +70,7 @@ class ControlApplication {
           void this.controller.drain();
         }
       },
-      onRelease: () => void this.controller.stop(),
+      onRelease: () => void this.controller.releaseControl(),
     });
     this.state.subscribe(value => { this.view.render(value); this.updateControls(); });
     this.socket = new SocketClient(socketUrl(), {
@@ -86,6 +87,7 @@ class ControlApplication {
   start() {
     this.theme.start();
     this.navigation.start();
+    this.historyResize.observe(this.view.get('monitor-history-body').closest('.history-table-wrap'));
     this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor.refresh());
     this.view.get('session-reconnect').addEventListener('click', () => void this.connectSession(true));
     this.view.get('theme-cycle').addEventListener('click', () => this.view.get('theme-button').click());
@@ -150,7 +152,13 @@ class ControlApplication {
   resizeMonitor() {
     const mobile = this.navigation.mobile.matches;
     const landscape = window.innerWidth > window.innerHeight;
-    this.monitorView.setPageSize(!mobile ? 10 : landscape || window.innerHeight <= 520 ? 2 : window.innerHeight < 670 ? 3 : 5);
+    if (mobile) {
+      this.monitorView.setPageSize(landscape || window.innerHeight <= 520 ? 2 : window.innerHeight < 670 ? 3 : 5);
+      return;
+    }
+    const table = this.view.get('monitor-history-body').closest('table');
+    const available = table.parentElement.clientHeight - table.tHead.offsetHeight;
+    if (available > 0) this.monitorView.setPageSize(Math.max(1, Math.min(10, Math.floor(available / 36))));
   }
 
   async loadCatalog() {
