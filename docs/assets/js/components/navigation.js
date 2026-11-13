@@ -35,6 +35,7 @@ export class Navigation {
     if (!['control', 'monitor'].includes(name) || name === this.currentView) return;
     this.closePanel();
     this.currentView = name;
+    this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: 'nav' }));
     this.document.documentElement.dataset.view = name;
     this.document.getElementById('control-view').hidden = name !== 'control';
     this.document.getElementById('monitor-view').hidden = name !== 'monitor';
@@ -53,6 +54,7 @@ export class Navigation {
     const details = card.querySelector('details');
     if (details) details.open = true;
     if (!this.mobile.matches && !this.shortDesktop.matches && name !== 'activity') {
+      this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: name }));
       (card.querySelector('input, select, button') ?? card).focus({ preventScroll: true });
       return;
     }
@@ -65,11 +67,13 @@ export class Navigation {
     this.document.getElementById('sheet-title').textContent = { session: 'Ajustes', demo: 'Recorridos DEMO', activity: 'Última acción' }[name];
     trigger?.setAttribute('aria-expanded', 'true');
     this.dialog.showModal();
+    this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: name }));
     // Evita abrir el teclado del teléfono antes de que el usuario toque el campo.
     this.document.getElementById('sheet-close').focus({ preventScroll: true });
   }
 
   closePanel() {
+    if (this.currentCard) this.document.dispatchEvent(new Event('iot:cancel-hold'));
     if (this.dialog.open) this.dialog.close();
     this.restorePanel();
   }

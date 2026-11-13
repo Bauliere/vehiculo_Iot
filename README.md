@@ -19,7 +19,7 @@ Abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/). Mantén la terminal abier
 
 - Arrastra el joystick o usa las flechas del teclado con el joystick enfocado. La palanca de la caja responde al arrastre, toque y flechas verticales. Al soltar se solicita DETENER.
 - Luces y sonido alternan con cada pulsación. Sus LEDs reflejan la alternancia observada durante la sesión. La comprobación del estado físico se hace en el carrito.
-- La DEMO 1 se carga si está activa. Puedes elegir otro recorrido. Los eventos de cada paso iluminan o mueven el control correspondiente. DETENER tiene prioridad sobre la secuencia.
+- La DEMO 1 se carga si está activa. Elige el recorrido y mantén pulsado **Iniciar DEMO** hasta que se llene el botón. Los eventos de cada paso iluminan o mueven el control correspondiente. DETENER tiene prioridad sobre la secuencia.
 - Monitoreo consulta estado e historial por REST, recibe eventos por el mismo WSS y recupera datos cuando vuelve la conexión. El historial muestra hasta diez filas persistidas, en hora de Ciudad de México. Los pasos internos de DEMO actualizan el estado y quedan fuera del historial individual.
 - CONTROL y MONITOREO caben en la pantalla del teléfono y la laptop. En horizontal, la barra de acciones queda al costado en el teléfono. El historial se consulta por páginas cuando hace falta. Pulsa el icono junto a CONTROL / IoT para cambiar la paleta, incluida Rojo grafito.
 
@@ -32,6 +32,7 @@ Abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/). Mantén la terminal abier
 | `docs/assets/js/components` | Vistas, navegación, joystick, palanca y animaciones |
 | `docs/assets/js/controllers`, `domain`, `state` | Órdenes, catálogo y sincronización |
 | `docs/assets/js/services` | REST, sesión temporal, WSS y diagnóstico |
+| `docs/assets/react-bits` | Componentes visuales y configuración para compilarlos |
 | `app/api`, `app/services` | Rutas FastAPI y reglas de negocio |
 | `app/database.py`, `app/websocket` | Conexión TLS con RDS y distribución de eventos |
 | `docs/tests`, `tests` | Pruebas de la interfaz y autorización |
@@ -61,6 +62,19 @@ Desde la raíz, con el entorno virtual de la API preparado:
 ```
 
 Las pruebas de navegador usan respuestas REST y WSS de prueba. En la guía están los pasos para comprobar el WSS y el historial reales con Postman.
+
+## Efectos visuales
+
+React Bits se carga en secciones de la interfaz. Sus efectos usan la paleta activa. Los archivos compilados están incluidos en `docs/assets/vendor`, así que la página se sigue sirviendo como sitio estático.
+
+Si editas los componentes en `docs/assets/react-bits`, recompílalos desde `docs` con Node.js y pnpm:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm build:effects
+```
+
+Los componentes proceden del catálogo de React Bits. Los créditos y las licencias están en [iot-effects.LICENSE.txt](docs/assets/vendor/iot-effects.LICENSE.txt).
 
 **Amador Ramírez Jesús Gabriel · 2026**  
 Soluciones IoT · Profesor: Víctor Manuel Pinedo Fernández

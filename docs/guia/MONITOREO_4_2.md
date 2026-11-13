@@ -153,7 +153,7 @@ Utiliza `assets/servidor_local.py`: entrega correctamente los módulos JavaScrip
 4. Usa el joystick para avanzar, retroceder o girar. Al soltarlo se envía DETENER.
 5. Lleva la palanca hacia **Subir** o **Bajar** para accionar la caja. Suéltala para volver al centro y detener.
 6. Usa **Luces** y **Sonido** en la barra inferior. Sus indicadores reflejan la alternancia solicitada y observada mediante WSS durante esta sesión. Al abrir la página se desconoce cómo estaban físicamente. DETENER no cambia estos indicadores.
-7. Abre **DEMO**. La DEMO 1 se selecciona automáticamente cuando existe y tiene pasos. Puedes cambiarla e iniciar el recorrido. **Cancelar** o **DETENER** detienen la secuencia conocida. La animación sigue los pasos WSS recibidos; no envía órdenes adicionales.
+7. Abre **DEMO**. La DEMO 1 se selecciona automáticamente cuando existe y tiene pasos. Elige el recorrido y mantén pulsado **Iniciar DEMO** durante unos 0.9 segundos. **Cancelar** o **DETENER** detienen la secuencia. La animación sigue los pasos recibidos por WSS.
 
 En el teléfono, CONTROL cabe en la pantalla sin desplazar la página. Ajustes y DEMO se abren desde sus botones. En PC se conservan los paneles completos. Las confirmaciones de solicitudes y eventos están en MONITOREO. Pulsa el icono junto a CONTROL para cambiar la paleta.
 

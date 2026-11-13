@@ -24,9 +24,11 @@ La dirección de la API y el vehículo se configuran en `assets/js/config.js`. E
 1. Espera a que los indicadores de API, RDS y WSS estén disponibles.
 2. La página obtiene automáticamente una sesión temporal de control. No hay un campo de clave. Confirma **DETENER** antes de manejar.
 3. Usa el joystick o las flechas del teclado. Al soltar se envía **DETENER**. La palanca sube y baja la caja; la barra inferior contiene luces y sonido.
-4. Abre **DEMO** para consultar el recorrido seleccionado, iniciarlo o cancelarlo. La DEMO 1 se selecciona al cargar cuando está disponible. **DETENER** también cancela la DEMO conocida.
+4. Abre **DEMO** para consultar el recorrido. Mantén pulsado **Iniciar DEMO** hasta que se llene el botón. La DEMO 1 se selecciona al cargar cuando está disponible. **Cancelar** y **DETENER** siguen disponibles durante el recorrido.
 
 Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01, Rosa claro y Rojo grafito. La paleta se recuerda en el navegador. **Ajustes → Reconectar** recupera el acceso si falló la conexión inicial.
+
+Los títulos, Fausto, el fondo y los paneles usan React Bits. El cursor animado aparece con ratón. El navegador muestra la versión estática si no puede ejecutar los efectos WebGL o si está activada la reducción de movimiento. Para editar y recompilar los componentes, consulta el [README del repositorio](../README.md#efectos-visuales).
 
 Las dos vistas caben en la pantalla. En teléfono horizontal, DETENER y las funciones adicionales están al costado. MONITOREO pagina el historial según el espacio disponible. El botón con la onda abre las confirmaciones de la última acción.
 
@@ -82,6 +84,7 @@ docs/
       state/      Estado de control
       utils/      Errores y validaciones comunes
     vendor/       Bootstrap
+    react-bits/   Componentes de efectos y compilación
     servidor_local.py
   tests/          Pruebas automatizadas
   guia/           Instrucciones y comprobaciones

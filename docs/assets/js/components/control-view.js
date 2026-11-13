@@ -75,7 +75,9 @@ export class ControlView {
   }
   availability({ enabled, pending, demo, hasKey, ready, selectedDemo, uncertain }) {
     for (const button of this.get('extra-controls').querySelectorAll('button')) button.disabled = !enabled || button.dataset.placeholder === 'true';
-    this.get('demo-start').disabled = !enabled || pending || !selectedDemo;
+    const demoDisabled = !enabled || pending || !selectedDemo;
+    if (this.demoButton) this.demoButton.setDisabled(demoDisabled);
+    else this.get('demo-start').disabled = demoDisabled;
     this.get('demo-cancel').disabled = !hasKey || (!demo && !uncertain);
     this.get('demo-select').disabled = !ready || demo || pending;
     // DETENER sigue disponible durante solicitudes, DEMO y fallos de conectividad.

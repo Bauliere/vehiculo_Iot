@@ -1,0 +1,218 @@
+/* Los efectos ocupan capas decorativas; las medidas y entradas siguen en la vista HTML. */
+body {
+  isolation: isolate;
+}
+
+#slats-effect {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 77% 0%, var(--glow), transparent 72%),
+    var(--bg);
+}
+
+#slats-effect::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, var(--bg), transparent 57%);
+  opacity: .28;
+}
+
+#slats-effect .micro-slats {
+  position: absolute;
+  inset: 0;
+  opacity: .47;
+}
+
+:root[data-theme="rose"] #slats-effect .micro-slats {
+  opacity: .31;
+}
+
+.rb-warp-shell {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.brand .rb-warp-shell {
+  display: inline-block;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+.brand .brand-text {
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--accent-strong);
+}
+
+.rb-warp {
+  position: absolute;
+  inset: -4px -3px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.brand .rb-warp {
+  inset: -2px -3px;
+}
+
+.rb-warp[data-ready] {
+  visibility: visible;
+}
+
+[data-warp-title]:has(+ .rb-warp[data-ready]) {
+  color: transparent;
+}
+
+.brand .brand-text:has(+ .rb-warp[data-ready]) {
+  color: transparent;
+}
+
+.rb-warp > .warp-text {
+  height: 100%;
+  min-height: 0;
+}
+
+.theme-button {
+  position: relative;
+  isolation: isolate;
+}
+
+#fausto-effect {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+#fausto-effect[data-ready] {
+  visibility: visible;
+}
+
+#fausto-effect > .halftone-reveal {
+  width: 100%;
+  height: 100%;
+  transform: scale(1.24);
+}
+
+.target-cursor {
+  pointer-events: none;
+}
+
+.view-navigation,
+.sidebar-card,
+.latest-panel,
+.history-panel {
+  position: relative;
+  isolation: isolate;
+}
+
+.rb-flip-surface {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  overflow: clip;
+  pointer-events: none;
+}
+
+.rb-flip-surface .flip-card {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.rb-flip-surface .flip-card__face {
+  background: transparent;
+  border-radius: var(--fc-radius);
+}
+
+.rb-flip-face {
+  position: absolute;
+  inset: 0;
+}
+
+.rb-flip-front {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, transparent), transparent 65%);
+}
+
+.rb-flip-back {
+  background:
+    radial-gradient(ellipse at 100% 5%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 64%),
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 48%);
+}
+
+.rb-flip-nav {
+  inset: 1px;
+}
+
+.rb-flip-tile {
+  inset: 1px;
+  z-index: 0;
+}
+
+.rb-flip-tile .rb-flip-front {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%);
+}
+
+.drive-panel > .rb-flip-surface {
+  z-index: 0;
+}
+
+.drive-panel:has(> .rb-flip-surface) > :not(.rb-flip-surface) {
+  position: relative;
+}
+
+#demo-start-effect {
+  display: flex;
+  flex: 1.25;
+  min-width: 0;
+}
+
+#demo-start-effect > button {
+  width: 100%;
+}
+
+#demo-start-effect > .rb-demo-hold {
+  min-height: 42px;
+  height: auto;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--surface-deep));
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+#demo-start-effect .hold-button__icon {
+  width: 14px;
+  height: 14px;
+}
+
+#demo-start-effect .hold-button__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+#demo-hold-note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+@media (max-width: 900px) and (orientation: landscape), (max-height: 650px) and (orientation: landscape) {
+  .drive-panel > .rb-flip-surface {
+    display: none;
+  }
+}
+
+@media (max-width: 600px), (max-height: 490px) {
+  #slats-effect .micro-slats {
+    opacity: .37;
+  }
+}

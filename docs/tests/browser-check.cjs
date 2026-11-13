@@ -29,7 +29,11 @@ let browser, activePage;
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/vehiculo_Iot/`;
-  browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_PATH ? { executablePath: process.env.BROWSER_PATH } : {}) });
+  browser = await chromium.launch({
+    headless: true,
+    args: ['--enable-unsafe-swiftshader'],
+    ...(process.env.BROWSER_PATH ? { executablePath: process.env.BROWSER_PATH } : {})
+  });
   const context = await browser.newContext({ viewport: { width:1440, height:1000 } });
   const calls = [], sockets = new Set(), errors = [], reads = { state:0, history:0 };
   let rejectControl = false;
@@ -107,6 +111,13 @@ let browser, activePage;
   };
   const view = async name => { await closeSheet(); await page.locator(`nav [data-view-target="${name}"]`).click(); await page.waitForFunction(name=>document.documentElement.dataset.view===name,name); };
   const settle = () => page.waitForTimeout(200);
+  const demoStart = page.locator('#demo-start');
+  const holdDemo = async () => {
+    await demoStart.hover();
+    await page.mouse.down();
+    await page.waitForFunction(() => document.getElementById('demo-start').dataset.phase === 'done');
+    await page.mouse.up();
+  };
   const recordIds = () => page.locator('#monitor-history-body tr[data-record-id]').evaluateAll(rows=>rows.map(row=>Number(row.dataset.recordId)));
   const assertFits = async (name,control=true) => {
     const layout = await page.evaluate(()=>({width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,scrollHeight:document.documentElement.scrollHeight,bodyScrollHeight:document.body.scrollHeight,scrollY}));
@@ -135,6 +146,12 @@ let browser, activePage;
   await page.goto(url);
   await page.waitForFunction(()=>document.getElementById('vehicle-name').textContent==='Maquina de carga',null,{timeout:10000});
   await page.waitForFunction(()=>document.getElementById('joystick').getAttribute('aria-disabled')==='false');
+  await page.waitForFunction(() => document.querySelector('#slats-effect canvas') &&
+    document.querySelector('#fausto-effect[data-ready]') &&
+    document.querySelector('#vehicle-name + .rb-warp[data-ready]'));
+  await page.waitForFunction(() => document.querySelectorAll('.target-cursor__corner').length ===
+    (matchMedia('(hover: hover) and (pointer: fine)').matches ? 4 : 0));
+  assert.equal(await page.locator('.rb-flip-surface .flip-card').count(), 8);
   assert.equal(await page.locator('#api-key').count(),0,'Sin campo de clave');
   assert.equal(await page.locator('#session-status').textContent(),'Disponible');
   assert.equal(await page.locator('#demo-select').inputValue(),'1');
@@ -175,7 +192,13 @@ let browser, activePage;
   }
   await page.locator('#stop-button').click();await settle();await openPanel('demo');
   await page.selectOption('#demo-select','1');await page.waitForFunction(()=>!document.getElementById('demo-start').disabled);
-  await page.locator('#demo-start').click();await page.waitForFunction(()=>!document.getElementById('demo-cancel').disabled);
+  const beforeDemoPress = calls.length;
+  await demoStart.click();
+  await settle();
+  assert.equal(calls.length, beforeDemoPress, 'Una pulsación corta no inicia la DEMO');
+  await holdDemo();
+  await page.waitForFunction(()=>!document.getElementById('demo-cancel').disabled);
+  assert.deepEqual(calls.slice(beforeDemoPress), ['demo:start']);
   assert.equal(await page.locator('[data-command-id="7"]').isDisabled(),true);
   const demoWrites = calls.length;
   const step = (id, orden) => eventFor(id, 'demo_movimiento', { id_demo:1, orden, duracion_ms:500, pausa_ms:100 });
@@ -195,6 +218,9 @@ let browser, activePage;
   // Monitoreo: REST como persistencia, eventos externos y DEMO aislada del historial.
   await view('monitor');
   await page.waitForFunction(()=>document.getElementById('monitor-history-body').querySelectorAll('tr[data-record-id]').length===10);
+  await page.waitForFunction(() => document.querySelector('#monitor-vehicle + .rb-warp[data-ready]') &&
+    document.querySelector('#monitor-command + .rb-warp[data-ready]') &&
+    document.querySelector('#history-heading + .rb-warp[data-ready]'));
   assert.ok(reads.state>0 && reads.history>0,'Carga inicial REST');
   assert.deepEqual(await recordIds(),history.slice(-10).reverse().map(row=>row.id_historial));
   const writesBeforeMonitor=calls.length, externalEvent=individual(5), newestId=nextRecord-1;
@@ -252,7 +278,19 @@ let browser, activePage;
   await openPanel('demo');
   assert.equal(await page.locator('#control-sheet').evaluate(el=>el.open),true);
   assert.equal(await page.locator('#demo-select').inputValue(),'1');
-  await page.locator('#demo-start').click();
+  const beforeCancelHold = calls.length;
+  await demoStart.focus();
+  await page.keyboard.down('Space');
+  await page.keyboard.press('Escape');
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(980);
+  assert.equal(calls.length, beforeCancelHold, 'Escape cancela el inicio sostenido');
+  await openPanel('demo');
+  await demoStart.focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.getElementById('demo-start').dataset.phase === 'done');
+  await page.keyboard.up('Space');
+  assert.deepEqual(calls.slice(beforeCancelHold), ['demo:start']);
   assert.equal(await page.locator('#control-sheet').evaluate(el=>el.open),false,'El panel cierra para ver la DEMO');
   await page.waitForFunction(()=>document.getElementById('control-notice').textContent==='DEMO en curso');
   await page.locator('#stop-button').click();
@@ -261,6 +299,20 @@ let browser, activePage;
   assert.deepEqual(calls.slice(-2),[1,9],'Joystick por teclado');
   const touchBox=await area.boundingBox(),tx=touchBox.x+touchBox.width/2,ty=touchBox.y+touchBox.height/2;
   const cdp=await context.newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  await page.waitForFunction(() => !document.querySelector('.target-cursor'));
+  await openPanel('demo');
+  const beforeTouchHold = calls.length;
+  const demoBox = await demoStart.boundingBox();
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: demoBox.x + demoBox.width / 2, y: demoBox.y + demoBox.height / 2 }]
+  });
+  await page.waitForFunction(() => document.getElementById('demo-start').dataset.phase === 'done');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  assert.deepEqual(calls.slice(beforeTouchHold), ['demo:start'], 'Mantener con un dedo confirma una sola DEMO');
+  await page.locator('#stop-button').click();
+  await page.waitForFunction(() => document.getElementById('joystick').getAttribute('aria-disabled') === 'false');
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:tx,y:ty}]});
   await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:tx,y:ty-touchBox.width*.28}]});await settle();
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await settle();
@@ -298,11 +350,43 @@ let browser, activePage;
   await page.waitForFunction(()=>document.getElementById('api-status').textContent.includes('Disponible'));
   await page.waitForFunction(()=>document.getElementById('ws-status').textContent.includes('En línea'),null,{timeout:10000});
   await view('monitor');await page.waitForFunction(()=>document.getElementById('monitor-history-body').querySelectorAll('tr[data-record-id]').length>0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForFunction(() => !document.querySelector('#slats-effect canvas, .rb-warp[data-ready], .target-cursor'));
+  await assertFits('monitoreo-movimiento-reducido', false);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      return type === 'webgl2' ? null : getContext.call(this, type, ...args);
+    };
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById('demo-start-effect').dataset.enhanced === 'true' &&
+    document.getElementById('joystick').getAttribute('aria-disabled') === 'false');
+  assert.equal(await page.locator('#slats-effect canvas, .rb-warp[data-ready], #fausto-effect[data-ready]').count(), 0);
+  assert.equal(await page.locator('#vehicle-name').evaluate(el => getComputedStyle(el).color === 'rgba(0, 0, 0, 0)'), false);
+  await assertFits('control-sin-webgl');
+
+  await context.route('**/iot-effects.js', route => route.abort());
+  await page.reload();
+  await page.waitForFunction(() => !document.getElementById('demo-start').disabled);
+  await openPanel('demo');
+  const beforeFallback = calls.length;
+  await demoStart.click();
+  await settle();
+  assert.equal(calls.length, beforeFallback);
+  await demoStart.focus();
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => document.getElementById('control-notice').textContent === 'DEMO en curso');
+  await page.keyboard.up('Space');
+  assert.deepEqual(calls.slice(beforeFallback), ['demo:start'], 'Sin React el inicio conserva la pulsación sostenida');
+  await page.locator('#stop-button').click();
+  await page.waitForFunction(() => document.getElementById('joystick').getAttribute('aria-disabled') === 'false');
   assert.deepEqual(errors,[],'Sin errores JavaScript');
   console.log(JSON.stringify({date:new Date().toISOString(),target:'Frontend local con REST/WSS interceptados. Sin POST reales.',browser:await browser.version(),
     checks:['Subruta Pages','Joystick/palanca ratón teclado toque y parada','Luces y sonido','DEMO y cancelación','REST inicial/eventos externos',
       'Historial máximo10, orden, deduplicación y paginación','DEMO no contamina historial','Reconexión recupera datos perdidos',
-      'Doce resoluciones sin scroll','Cinco paletas','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
+      'Doce resoluciones sin scroll','Cinco paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
       'Indicadores independientes','Favicon y créditos'],reads,calls,errors},null,2));
 })().catch(async error=>{
   console.error(error);

@@ -3,5 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "test": "node --test tests/*.test.js" }
+  "scripts": {
+    "build:effects": "node assets/react-bits/build.mjs",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "motion": "12.43.0",
+    "ogl": "1.0.11",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
 }

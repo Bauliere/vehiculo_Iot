@@ -13,6 +13,9 @@ import { Navigation } from './components/navigation.js';
 import { MonitorController } from './controllers/monitor-controller.js';
 import { MonitorView } from './components/monitor-view.js';
 import { ControlFeedback } from './components/control-feedback.js';
+import { bindHoldGesture } from './components/hold-gesture.js';
+
+const DEMO_HOLD_MS = 900;
 
 /** Punto de composición: conecta clases de dominio, servicios y componentes. */
 class ControlApplication {
@@ -87,6 +90,7 @@ class ControlApplication {
   start() {
     this.theme.start();
     this.navigation.start();
+    this.startEffects();
     this.historyResize.observe(this.view.get('monitor-history-body').closest('.history-table-wrap'));
     this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor.refresh());
     this.view.get('session-reconnect').addEventListener('click', () => void this.connectSession(true));
@@ -98,10 +102,6 @@ class ControlApplication {
     url.href = `${CONFIG.apiBaseUrl}/docs`;
     this.view.get('stop-button').addEventListener('click', () => void this.controller.stop());
     this.view.get('demo-cancel').addEventListener('click', () => void this.controller.stop());
-    this.view.get('demo-start').addEventListener('click', () => {
-      this.navigation.closePanel();
-      void this.controller.startDemo(this.demoSelection);
-    });
     this.view.get('demo-select').addEventListener('change', () => void this.selectDemo());
     this.view.get('refresh-button').addEventListener('click', () => {
       void this.health.check();
@@ -129,6 +129,22 @@ class ControlApplication {
     void this.loadCatalog();
     void this.monitor.start();
     void this.connectSession();
+  }
+
+  startEffects() {
+    // Mantiene el mismo gesto aunque el archivo de efectos no se pueda cargar.
+    const confirmDemo = () => {
+      if (document.hidden || this.view.get('demo-start').disabled) return;
+      this.navigation.closePanel();
+      void this.controller.startDemo(this.demoSelection);
+    };
+    const host = this.view.get('demo-start-effect');
+    const removeFallback = bindHoldGesture(host.querySelector('button'), DEMO_HOLD_MS, confirmDemo);
+    void import('../vendor/iot-effects.js').then(({ mountDemoHold, mountVisuals }) => {
+      removeFallback();
+      this.view.demoButton = mountDemoHold(host, confirmDemo, DEMO_HOLD_MS);
+      mountVisuals(document);
+    }).catch(error => console.warn('No se pudieron cargar los efectos de la interfaz.', error));
   }
 
   async connectSession(force = false) {
@@ -195,6 +211,7 @@ class ControlApplication {
   }
 
   async selectDemo() {
+    document.dispatchEvent(new Event('iot:cancel-hold'));
     const generation = ++this.demoGeneration;
     const id = Number(this.view.get('demo-select').value);
     this.demoSelection = 0;
