@@ -27,7 +27,7 @@ body {
   opacity: .47;
 }
 
-:root:is([data-theme="rose"], [data-theme="white-red"]) #slats-effect .micro-slats {
+:root[data-theme="rose"] #slats-effect .micro-slats {
   opacity: .31;
 }
 
@@ -39,8 +39,8 @@ body {
   opacity: .58;
 }
 
-:root[data-theme="white-red"] .monitor-foil {
-  mix-blend-mode: multiply;
+:root[data-theme="white-red"] #slats-effect .micro-slats {
+  opacity: .53;
 }
 
 .rb-warp-shell {

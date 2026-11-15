@@ -1958,12 +1958,12 @@ button {
 :root[data-theme="black-yellow"] {
   color-scheme: dark;
   --bg: #090909;
-  --glow: #44350f;
-  --panel: rgba(27, 26, 22, .92);
-  --surface: #302b1d;
-  --surface-deep: #171610;
-  --text: #fffdf4;
-  --muted: #c8c3af;
+  --glow: #332707;
+  --panel: rgba(20, 20, 20, .94);
+  --surface: #242424;
+  --surface-deep: #111111;
+  --text: #ffffff;
+  --muted: #d6d6d6;
   --accent: #ffda45;
   --accent-strong: #fff2af;
   --slat-accent: #d7b837;
@@ -1974,21 +1974,21 @@ button {
 }
 
 :root[data-theme="white-red"] {
-  color-scheme: light;
-  --bg: #ffffff;
-  --glow: #f6d7db;
-  --panel: rgba(255, 255, 255, .92);
-  --surface: #ffffff;
-  --surface-deep: #fff0f1;
-  --text: #2d151b;
-  --muted: #66454c;
-  --accent: #b31631;
-  --accent-strong: #8e0b24;
-  --slat-accent: #ed8d9a;
-  --ink: #ffffff;
-  --danger: #244f66;
-  --border: rgba(150, 28, 51, .24);
-  --shadow: rgba(91, 27, 39, .15);
+  color-scheme: dark;
+  --bg: #57091b;
+  --glow: #a91838;
+  --panel: rgba(106, 10, 31, .94);
+  --surface: #8a1230;
+  --surface-deep: #650b23;
+  --text: #ffffff;
+  --muted: #f5d7de;
+  --accent: #ffb3c1;
+  --accent-strong: #fff1f3;
+  --slat-accent: #e93b5f;
+  --ink: #400619;
+  --danger: #c1eafc;
+  --border: rgba(255, 224, 231, .30);
+  --shadow: rgba(44, 0, 12, .36);
 }
 
 html, body {
