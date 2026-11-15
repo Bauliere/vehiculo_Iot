@@ -11,7 +11,7 @@
 
 @media (max-width: 900px) and (max-height: 670px) and (orientation: portrait) {
   .control-dock :is(.dock-button, .extra-control) { min-height: 43px; }
-  #fausto-open img { width: 20px; height: 20px; }
+  #fausto-open { --fausto-dock-icon-size: 25px; }
   .header-tools .icon-button { width: 32px; height: 32px; }
 }
 
@@ -20,10 +20,12 @@ html[data-pilot-fullscreen] .app-footer {
   display: none;
 }
 
-#fausto-open img {
-  object-fit: cover;
-  border-radius: 9px;
-  border: 1px solid var(--border);
+.fausto-dock-icon {
+  width: var(--fausto-dock-icon-size, 32px);
+  height: var(--fausto-dock-icon-size, 32px);
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask: url("../images/fausto-transparente.png") center / contain no-repeat;
 }
 
 .monitor-foil {
@@ -127,6 +129,8 @@ html[data-pilot-fullscreen] .app-footer {
 :root[data-theme="eva"] .fausto-avatar { --fausto-neon: #8fd239; --fausto-core: #f0ffcd; }
 :root[data-theme="rose"] .fausto-avatar { --fausto-neon: #e955ac; --fausto-core: #ffe4f5; }
 :root[data-theme="red"] .fausto-avatar { --fausto-neon: #ff4f67; --fausto-core: #ffe6eb; }
+:root[data-theme="black-yellow"] .fausto-avatar { --fausto-neon: #ffd42a; --fausto-core: #fff4c1; }
+:root[data-theme="white-red"] .fausto-avatar { --fausto-neon: #ff364c; --fausto-core: #ffe5e7; }
 
 .fausto-avatar img {
   width: 71%;
@@ -266,6 +270,7 @@ html[data-pilot-fullscreen] .app-footer {
 
 @media (orientation: landscape) and (max-height: 500px) {
   .control-dock .dock-button { font-size: clamp(8px, 1.4vw, 10px); padding-inline: 1px; }
+  #fausto-open { --fausto-dock-icon-size: 24px; }
   .header-tools .icon-button { width: 32px; height: 32px; }
   .fausto-dialog { padding: 10px 14px; gap: 6px; }
   .fausto-avatar { width: clamp(60px, 23dvh, 88px); border-radius: 12px; }

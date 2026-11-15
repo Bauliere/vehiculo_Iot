@@ -1955,6 +1955,42 @@ button {
   --shadow: rgba(0, 0, 0, .38);
 }
 
+:root[data-theme="black-yellow"] {
+  color-scheme: dark;
+  --bg: #090909;
+  --glow: #44350f;
+  --panel: rgba(27, 26, 22, .92);
+  --surface: #302b1d;
+  --surface-deep: #171610;
+  --text: #fffdf4;
+  --muted: #c8c3af;
+  --accent: #ffda45;
+  --accent-strong: #fff2af;
+  --slat-accent: #d7b837;
+  --ink: #1c1607;
+  --danger: #ff9aa5;
+  --border: rgba(255, 229, 135, .26);
+  --shadow: rgba(0, 0, 0, .36);
+}
+
+:root[data-theme="white-red"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --glow: #f6d7db;
+  --panel: rgba(255, 255, 255, .92);
+  --surface: #ffffff;
+  --surface-deep: #fff0f1;
+  --text: #2d151b;
+  --muted: #66454c;
+  --accent: #b31631;
+  --accent-strong: #8e0b24;
+  --slat-accent: #ed8d9a;
+  --ink: #ffffff;
+  --danger: #244f66;
+  --border: rgba(150, 28, 51, .24);
+  --shadow: rgba(91, 27, 39, .15);
+}
+
 html, body {
   height: 100%;
   overflow: clip;

@@ -27,12 +27,20 @@ body {
   opacity: .47;
 }
 
-:root[data-theme="rose"] #slats-effect .micro-slats {
+:root:is([data-theme="rose"], [data-theme="white-red"]) #slats-effect .micro-slats {
   opacity: .31;
 }
 
 :root[data-theme="silver"] #slats-effect .micro-slats {
   opacity: .78;
+}
+
+:root[data-theme="black-yellow"] #slats-effect .micro-slats {
+  opacity: .58;
+}
+
+:root[data-theme="white-red"] .monitor-foil {
+  mix-blend-mode: multiply;
 }
 
 .rb-warp-shell {
@@ -230,5 +238,9 @@ body {
 
   :root[data-theme="silver"] #slats-effect .micro-slats {
     opacity: .66;
+  }
+
+  :root[data-theme="black-yellow"] #slats-effect .micro-slats {
+    opacity: .47;
   }
 }

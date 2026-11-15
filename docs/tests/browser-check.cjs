@@ -320,7 +320,8 @@ let browser, activePage;
   await view('control');
   assert.equal(await page.locator('#theme-button img').evaluate(el=>el.complete&&el.naturalWidth>0),true);
   const beforeThemes=calls.length, accents=[];
-  for(const theme of ['silver','forest','violet','eva','rose','red']){
+  const themes = ['silver','forest','violet','eva','rose','red','black-yellow','white-red'];
+  for(const theme of themes){
     assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
     accents.push(await page.locator('#api-status .status-dot').evaluate(el=>getComputedStyle(el).backgroundColor));
     for(const [size,width,height]of[['desktop',1440,1000],['mobile',390,844]]){
@@ -329,7 +330,7 @@ let browser, activePage;
     }
     await page.locator('#theme-button').click();
   }
-  assert.equal(new Set(accents).size,6,'Indicadores con seis acentos');
+  assert.equal(new Set(accents).size,themes.length,'Indicadores con ocho acentos');
   assert.equal(calls.length,beforeThemes,'Cambiar tema no envía órdenes');
   for(const[name,width,height]of dimensions){
     await page.setViewportSize({width,height});await view('control');await settle();await assertFits(name);
@@ -539,7 +540,7 @@ let browser, activePage;
   console.log(JSON.stringify({date:new Date().toISOString(),target:'Frontend local con REST/WSS interceptados. Sin POST reales.',browser:await browser.version(),
     checks:['Subruta Pages','Joystick/palanca ratón teclado toque y parada','Luces y sonido','DEMO y cancelación','REST inicial/eventos externos',
       'Historial máximo10, orden, deduplicación y paginación','DEMO no contamina historial','Reconexión recupera datos perdidos',
-      'Doce resoluciones sin scroll','Seis paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
+      'Doce resoluciones sin scroll','Ocho paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
       'Indicadores independientes','Favicon y créditos','Pantalla completa','Joystick con renovación','Fausto.IA por texto y audio con ejecución automática',
       'Audio por pulsación breve y sostenida','Cambios de catálogo confirmados con clave de administrador','Cursor y hologramas'],reads,calls,errors},null,2));
 })().catch(async error=>{
