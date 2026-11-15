@@ -4,15 +4,19 @@ import { commandLabel } from '../domain/catalog.js';
 export class ControlView {
   constructor(document) { this.document = document; }
   get(id) { return this.document.getElementById(id); }
-  text(id, value) { const node = this.get(id); if (node) node.textContent = value; }
+  text(id, value) {
+    const node = this.get(id);
+    if (node && node.textContent !== value) node.textContent = value;
+  }
   status(id, state, label) {
     const node = this.get(id);
     node.dataset.state = state;
-    node.querySelector('[data-status-text]').textContent = label;
+    const text = node.querySelector('[data-status-text]');
+    if (text.textContent !== label) text.textContent = label;
   }
   vehicle(vehicle) {
     this.text('vehicle-name', vehicle.nombre);
-    this.text('vehicle-id', `VEHÍCULO ${vehicle.id_vehiculo.toString().padStart(2, '0')}`);
+    this.text('vehicle-id', `Vehículo ${vehicle.id_vehiculo.toString().padStart(2, '0')}`);
   }
   commands(commands, onCommand) {
     const container = this.get('extra-controls');

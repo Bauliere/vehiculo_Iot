@@ -53,7 +53,7 @@ export class Navigation {
     this.onPanel(name);
     const details = card.querySelector('details');
     if (details) details.open = true;
-    if (!this.mobile.matches && !this.shortDesktop.matches && name !== 'activity') {
+    if (!this.mobile.matches && !this.shortDesktop.matches && name !== 'activity' && !card.closest('[hidden]')) {
       this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: name }));
       (card.querySelector('input, select, button') ?? card).focus({ preventScroll: true });
       return;
@@ -64,7 +64,7 @@ export class Navigation {
     card.before(this.placeholder);
     this.currentCard = card;
     this.document.getElementById('sheet-content').append(card);
-    this.document.getElementById('sheet-title').textContent = { session: 'Ajustes', demo: 'Recorridos DEMO', activity: 'Última acción' }[name];
+    this.document.getElementById('sheet-title').textContent = { session: 'Acceso al control', demo: 'Recorridos guiados', activity: 'Confirmaciones de la última orden' }[name];
     trigger?.setAttribute('aria-expanded', 'true');
     this.dialog.showModal();
     this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: name }));

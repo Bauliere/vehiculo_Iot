@@ -25,7 +25,7 @@ export class ControlController {
 
   permitted() {
     if (!this.api.hasKey()) throw new Error('La sesión de control todavía no está disponible.');
-    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Pulsa Actualizar en la barra superior.');
+    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Pulsa Actualizar conexión.');
     if (!this.canOperate()) throw new Error('Espera a que la API y WebSocket estén disponibles.');
   }
 
@@ -237,7 +237,7 @@ export class ControlController {
       if (revision === this.revision) {
         this.error(error);
         const reason = error.status === 401
-          ? 'La API rechazó la sesión (HTTP 401). Pulsa Actualizar en la barra superior y vuelve a pulsar DETENER.'
+          ? 'La API rechazó la sesión (HTTP 401). Pulsa Actualizar conexión y vuelve a pulsar DETENER.'
           : error.status === 403
             ? 'La sesión no tiene permiso (HTTP 403). Revisa la configuración del servidor y vuelve a pulsar DETENER.'
             : `${error.message || 'No hubo respuesta válida de la API.'} Vuelve a pulsar DETENER.`;

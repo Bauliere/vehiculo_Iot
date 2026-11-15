@@ -111,7 +111,6 @@ class ControlApplication {
     this.historyResize.observe(this.view.get('monitor-history-body').closest('.history-table-wrap'));
     this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor.refresh());
     this.view.get('session-reconnect').addEventListener('click', () => void this.connectSession(true));
-    this.view.get('theme-cycle').addEventListener('click', () => this.view.get('theme-button').click());
     this.view.text('developer-credit', `Desarrollado por ${CONFIG.author} · ${CONFIG.year}`);
     this.view.text('academic-credit', `${CONFIG.subject} · Profesor: ${CONFIG.teacher}`);
     const url = this.view.get('api-url');
@@ -180,7 +179,7 @@ class ControlApplication {
       await this.api.connectControl({ force });
       this.state.update({ authError: null });
     } catch (error) {
-      this.sessionNotice = 'Acceso automático no disponible. Pulsa Actualizar en la barra superior.';
+      this.sessionNotice = 'Acceso automático no disponible. Pulsa Actualizar conexión.';
       this.view.text('session-feedback', error.status === 404 || error.status === 403
         ? 'Activa el control público en la instancia con la guía incluida.' : error.message);
     } finally {
@@ -305,11 +304,13 @@ class ControlApplication {
     if (!this.sessionNotice) this.view.text('session-feedback', this.sessionLoading ? 'Conectando automáticamente…'
       : this.api.hasKey() ? 'Sesión de control lista.' : 'No hay sesión de control disponible.');
     const notice = uncertain ? 'Detención sin confirmar · revisa Monitoreo'
-      : this.sessionNotice ? 'Acceso no disponible · pulsa Actualizar'
+      : authError || this.sessionNotice ? 'Acceso no disponible · actualiza la conexión'
         : phase === 'stopping' ? 'Deteniendo…'
           : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
             : !this.api.hasKey() ? 'Preparando acceso…'
-              : demo ? 'DEMO en curso' : 'Listo para conducir';
+              : !this.ready ? 'Mandos no disponibles'
+                : this.fausto.run ? 'Fausto.IA en curso'
+                  : demo ? 'DEMO en curso' : 'Listo para conducir';
     this.view.text('control-notice', notice);
     this.view.get('control-notice').parentElement.dataset.tone = uncertain || authError ? 'error' : 'neutral';
   }

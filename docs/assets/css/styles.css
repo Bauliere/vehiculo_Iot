@@ -262,6 +262,25 @@ button {
   padding:14px 20px;
   border-block:1px solid var(--border);
 }
+.connection-actions {
+  display:flex;
+  align-items:center;
+  gap:4px;
+  margin-inline-start:auto;
+}
+.access-button {
+  min-height:34px;
+  padding:0 10px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--panel);
+  color:var(--text);
+  font-size:11px;
+}
+.connection-actions .refresh-button {
+  width:34px;
+  height:34px;
+}
 .connection-item {
   display:flex;
   align-items:center;
@@ -324,6 +343,14 @@ button {
   gap:16px;
   padding-bottom:24px;
   border-bottom:1px solid var(--border);
+}
+.control-identity {
+  min-width:0;
+}
+.vehicle-reference {
+  margin:3px 0 0;
+  font-size:11px;
+  color:var(--muted);
 }
 .eyebrow {
   font-size:10px;
@@ -644,21 +671,18 @@ button {
 .control-notice {
   display:flex;
   align-items:center;
-  justify-content:center;
-  gap:8px;
-  width:100%;
+  gap:6px;
+  max-width:44%;
   border:0;
   background:none;
   color:var(--muted);
   font-size:10px;
-  margin-top:12px;
+  margin:0;
   min-height:24px;
   padding:0 3px;
 }
-.control-notice>span:first-of-type {
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+.control-notice>span {
+  line-height:1.3;
 }
 .control-notice[data-tone=error] {
   color:var(--danger);
@@ -668,7 +692,7 @@ button {
 }
 .control-dock {
   display:grid;
-  grid-template-columns:minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:8px;
   padding:10px;
   background:linear-gradient(170deg,var(--surface),var(--surface-deep));
@@ -678,10 +702,14 @@ button {
   box-shadow:0 14px 24px var(--shadow);
   position:relative;
 }
-.extra-controls {
+.extra-controls,.guided-controls {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:8px;
+}
+.guided-controls {
+  padding-inline-start:8px;
+  border-inline-start:1px solid var(--border);
 }
 .dock-button,.extra-control {
   position:relative;
@@ -1147,7 +1175,7 @@ button {
   .connection-strip {
     flex-shrink:0;
     display:grid;
-    grid-template-columns:1fr 1fr 1fr;
+    grid-template-columns:repeat(3,minmax(0,1fr)) auto;
     gap:4px;
     margin:0;
     padding:6px 0;
@@ -1160,6 +1188,15 @@ button {
     row-gap:1px;
     font-size:9px;
     justify-content:center;
+  }
+  .access-button {
+    min-height:32px;
+    padding:0 7px;
+    font-size:10px;
+  }
+  .connection-actions .refresh-button {
+    width:32px;
+    height:32px;
   }
   .connection-item+.connection-item {
     padding-left:0;
@@ -1309,7 +1346,6 @@ button {
     height:17px;
   }
   .control-notice {
-    margin-top:5px;
     min-height:24px;
     font-size:9px;
   }
@@ -1320,8 +1356,11 @@ button {
     gap:3px;
     border-radius:20px;
   }
-  .extra-controls {
+  .extra-controls,.guided-controls {
     gap:3px;
+  }
+  .guided-controls {
+    padding-inline-start:4px;
   }
   .extra-control,.dock-button {
     min-height:60px;
@@ -1550,7 +1589,6 @@ button {
     min-height:44px;
   }
   .control-notice {
-    margin-top:3px;
     min-height:21px;
     font-size:8px;
   }
@@ -1668,7 +1706,7 @@ button {
   .control-topline h1 {
     font-size:15px;
   }
-  .control-topline .eyebrow {
+  .control-topline .vehicle-reference {
     display:none;
   }
   .control-topline .mode-tag {
@@ -1711,9 +1749,6 @@ button {
     margin:0;
   }
   .stop-button small {
-    display:none;
-  }
-  .control-notice {
     display:none;
   }
   .control-dock {
@@ -1848,6 +1883,20 @@ button {
 }
 .monitor-heading {
   gap:8px;
+}
+#activity-open {
+  width:auto;
+  display:inline-flex;
+  align-items:center;
+  flex-shrink:0;
+  gap:6px;
+  padding:0 8px;
+  font-size:10px;
+  white-space:nowrap;
+}
+#activity-open svg {
+  width:16px;
+  height:16px;
 }
 .aux-led {
   position:absolute;
@@ -2091,11 +2140,6 @@ html, body {
     min-height: 42px;
   }
 
-  .control-notice {
-    flex-shrink: 0;
-    margin-top: 4px;
-  }
-
   .control-dock {
     margin: 0;
     padding: 5px;
@@ -2287,7 +2331,7 @@ html, body {
     margin: 0;
   }
 
-  .stop-button small, .joystick-feedback, .lever-feedback, .control-notice {
+  .stop-button small, .joystick-feedback, .lever-feedback {
     display: none;
   }
 
@@ -2302,8 +2346,13 @@ html, body {
     gap: 3px;
   }
 
-  .extra-controls {
+  .extra-controls, .guided-controls {
     grid-column: 1 / -1;
+  }
+  .guided-controls {
+    padding: 4px 0 0;
+    border-inline-start: 0;
+    border-top: 1px solid var(--border);
   }
 
   .extra-control, .dock-button {
@@ -2314,8 +2363,27 @@ html, body {
 }
 
 @media (orientation: landscape) and (max-height: 300px) {
+  .connection-strip {
+    padding-block:0;
+  }
+
+  .access-button {
+    min-height:24px;
+  }
+
+  .connection-actions .refresh-button {
+    width:24px;
+    height:24px;
+  }
+
+  .connection-actions .refresh-button svg {
+    width:15px;
+    height:15px;
+  }
+
   .pilot-workspace {
     grid-template-rows: auto 35px minmax(0, 1fr);
+    row-gap:4px;
   }
 
   .module-heading {
@@ -2323,6 +2391,6 @@ html, body {
   }
 
   .joystick-wrap {
-    --stick-size: max(45px, min(40cqw, calc(100cqh - 24px), 240px));
+    --stick-size: max(45px, min(40cqw, calc(100cqh - 22px), 240px));
   }
 }
