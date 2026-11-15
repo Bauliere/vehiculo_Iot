@@ -4,7 +4,7 @@ import ThoughtLine from './components/ThoughtLine.jsx';
 
 export function mountChatEffects(dialog) {
   const logo = dialog.querySelector('#fausto-electric');
-  const image = logo.previousElementSibling;
+  const source = new URL(logo.dataset.source, dialog.ownerDocument.baseURI).href;
   const theme = dialog.ownerDocument.documentElement;
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const showFallback = () => logo.removeAttribute('data-ready');
@@ -23,14 +23,14 @@ export function mountChatEffects(dialog) {
       electricRoot.render(null);
       return;
     }
-    const palette = getComputedStyle(theme);
-    electricRoot.render(<ElectricLogo src={image.src}
-      color={palette.getPropertyValue('--accent-strong').trim()}
-      glowColor={palette.getPropertyValue('--accent').trim()}
-      theme={theme.dataset.theme === 'rose' ? 'light' : 'dark'}
-      scale={0.82} intensity={0.48} glow={0.2} thickness={0.45} fill={0.15}
-      strands={2} bend={0.31} crackle={0.65} arcs={0.45} speed={1.7}
-      flicker={0.18} cursorIntensity={0.55} cursorRadius={40} onRender={logoReady} />);
+    const palette = getComputedStyle(logo);
+    // ElectricLogo separa el trazo blanco del fondo oscuro usando su contraste.
+    electricRoot.render(<ElectricLogo src={source}
+      color={palette.getPropertyValue('--fausto-core').trim()}
+      glowColor={palette.getPropertyValue('--fausto-neon').trim()}
+      scale={0.74} intensity={0.83} glow={0.78} thickness={0.59} fill={0}
+      strands={3} bend={0.35} crackle={0.8} arcs={0.65} speed={1.7}
+      flicker={0.2} cursorIntensity={0.5} cursorRadius={45} onRender={logoReady} />);
   };
   const changes = new MutationObserver(syncLogo);
   changes.observe(dialog, { attributes: true, attributeFilter: ['open'] });

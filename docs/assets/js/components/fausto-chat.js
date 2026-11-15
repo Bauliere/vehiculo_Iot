@@ -20,6 +20,7 @@ export class FaustoChat {
     Object.assign(this, { document, api, vehicleId, canExecute, onOpen, onRun, stop, onCatalogChange });
     this.dialog = document.getElementById('fausto-dialog');
     this.openButton = this.get('open');
+    this.openingSound = this.get('opening-sound');
     this.input = this.get('input');
     this.mic = this.get('mic');
     this.messages = this.get('messages');
@@ -38,11 +39,16 @@ export class FaustoChat {
 
   start() {
     this.openButton.addEventListener('click', () => {
+      if (this.dialog.open) return;
       this.onOpen();
       this.dialog.showModal();
+      this.openingSound.pause();
+      this.openingSound.currentTime = 0;
+      void this.openingSound.play().catch(() => {});
     });
     this.get('close').addEventListener('click', () => this.dialog.close());
     this.dialog.addEventListener('close', () => {
+      if (!this.dialog.open) this.openingSound.pause();
       this.voice.discard();
       this.query?.abort();
       this.voiceGesture = null;

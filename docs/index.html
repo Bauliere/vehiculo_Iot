@@ -54,7 +54,7 @@
 <button type="button" class="control-notice" data-view-target="monitor"><i class="status-dot" aria-hidden="true"></i><span id="control-notice">Activa tu acceso para comenzar</span><span aria-hidden="true">↗</span></button>
 </section>
 <div class="control-dock" aria-label="Funciones del vehículo"><div id="extra-controls" class="extra-controls"><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-light"/></svg><span>Luces</span></button><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-sound"/></svg><span>Sonido</span></button></div><button class="dock-button" id="demo-open" data-cursor-target data-open-panel="demo" type="button"><svg aria-hidden="true"><use href="#icon-demo"/></svg><span>DEMO</span></button>
-<button class="dock-button" id="fausto-open" type="button" aria-haspopup="dialog"><img src="./assets/images/fausto-transparente.png" alt="" width="24" height="24"><span>Fausto.IA</span></button></div>
+<button class="dock-button" id="fausto-open" type="button" aria-haspopup="dialog"><img src="./assets/images/fausto.png" alt="" width="24" height="24"><span>Fausto.IA</span></button></div>
 </div>
 <aside class="control-sidebar" aria-label="Acceso, recorridos y actividad">
 <section id="session-card" class="glass-panel sidebar-card"><span class="rb-flip-surface" data-flip-surface="session" aria-hidden="true"></span><div class="panel-heading"><p class="eyebrow">CONEXIÓN AUTOMÁTICA</p><h2>Ajustes</h2></div><div class="session-indicator" id="session-indicator" data-state="pending" role="status"><i class="status-dot" aria-hidden="true"></i><span id="session-status">Conectando</span></div><p id="session-feedback" class="session-feedback" role="status">Preparando acceso al vehículo…</p><div class="session-actions"><button id="session-reconnect" class="btn btn-mint" type="button">Reconectar</button><button id="theme-cycle" class="btn btn-outline-soft" type="button">Paleta</button></div><div class="settings-credits"><p>Amador Ramírez Jesús Gabriel · 2026</p><p>Soluciones IoT</p><p>Profesor: Víctor Manuel Pinedo Fernández</p><a href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Swagger UI ↗</a></div></section>
@@ -73,10 +73,10 @@
 </div>
 <dialog id="fausto-dialog" class="fausto-dialog" aria-labelledby="fausto-heading">
   <header class="fausto-heading">
-    <span class="fausto-avatar" aria-hidden="true">
-      <img src="./assets/images/fausto-transparente.png" alt="" width="68" height="58">
-      <span id="fausto-electric"></span>
-    </span>
+    <div class="fausto-avatar" aria-hidden="true">
+      <img src="./assets/images/fausto-transparente.png" alt="" width="126" height="109">
+      <div id="fausto-electric" data-source="./assets/images/fausto.png"></div>
+    </div>
     <div><h2 id="fausto-heading">Fausto.IA</h2><p>Asistente del carrito</p></div>
     <button type="button" id="fausto-close" class="icon-button" aria-label="Cerrar Fausto.IA"><svg aria-hidden="true"><use href="#icon-close"/></svg></button>
   </header>
@@ -113,6 +113,7 @@
     <span>Micrófono · pulsa o mantén pulsado</span>
     <button id="fausto-stop" class="btn stop-button fausto-stop" type="button">Detener</button>
   </footer>
+  <audio id="fausto-opening-sound" src="./assets/audio/fausto-apertura.mp3" preload="auto" hidden></audio>
 </dialog>
 <dialog id="control-sheet" class="control-sheet" aria-labelledby="sheet-title"><div class="sheet-heading"><h2 id="sheet-title">Acceso</h2><button id="sheet-close" type="button" class="icon-button" aria-label="Cerrar panel"><svg aria-hidden="true"><use href="#icon-close"/></svg></button></div><div id="sheet-content"></div></dialog>
 <noscript>Activa JavaScript para utilizar los controles y consultar el monitoreo.</noscript>
