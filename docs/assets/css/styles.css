@@ -1,6 +1,11 @@
 @charset "UTF-8";
 /* Las paletas comparten el mismo diseño y estados de interacción. */
-:root,
+:root {
+  --radius: 24px;
+  --mint: var(--accent);
+  --mint-strong: var(--accent-strong);
+}
+
 :root[data-theme="forest"] {
   color-scheme: dark;
   --bg: #071b17;
@@ -16,9 +21,6 @@
   --danger: #f0aa9f;
   --border: rgba(188, 231, 205, .16);
   --shadow: rgba(0, 0, 0, .2);
-  --radius: 24px;
-  --mint: var(--accent);
-  --mint-strong: var(--accent-strong);
 }
 :root[data-theme="violet"] {
   color-scheme: dark;
@@ -666,7 +668,7 @@ button {
 }
 .control-dock {
   display:grid;
-  grid-template-columns:2fr 1fr 1fr;
+  grid-template-columns:minmax(0, 2fr) repeat(2, minmax(0, 1fr));
   gap:8px;
   padding:10px;
   background:linear-gradient(170deg,var(--surface),var(--surface-deep));
@@ -675,17 +677,6 @@ button {
   margin:18px 34px 0;
   box-shadow:0 14px 24px var(--shadow);
   position:relative;
-}
-.control-dock:before {
-  content:"";
-  height:2px;
-  width:24%;
-  background:var(--accent);
-  opacity:.6;
-  position:absolute;
-  top:-1px;
-  left:38%;
-  box-shadow:0 0 14px var(--accent);
 }
 .extra-controls {
   display:grid;
@@ -1945,6 +1936,7 @@ button {
   --shadow: rgba(0, 0, 0, .28);
 }
 
+:root:not([data-theme]),
 :root[data-theme="silver"] {
   color-scheme: dark;
   --bg: #0a0a0c;
@@ -1956,6 +1948,7 @@ button {
   --muted: #bdbec8;
   --accent: #d9dae4;
   --accent-strong: #ffffff;
+  --slat-accent: #e5e7ef;
   --ink: #131419;
   --danger: #f4a4a9;
   --border: rgba(233, 235, 255, .23);

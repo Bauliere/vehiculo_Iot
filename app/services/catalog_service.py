@@ -50,6 +50,29 @@ class CatalogService:
                 return movement
         raise ApiError(404, "El movimiento no existe o no pertenece a la DEMO.")
 
+    @staticmethod
+    def _check_preview(row, preview, fields):
+        if any(field in preview and row[field] != preview[field] for field in fields):
+            raise ApiError(409, "El registro cambió después de la vista previa. Vuelve a solicitar el cambio.")
+
+    def _create_demo(self, session, vid, data):
+        steps = data.get("pasos", ())
+        if steps:
+            commands = {row["id_comando"]: row for row in session.call("sp_obtener_comandos_vehiculo", (vid,))}
+            for step in steps:
+                row = commands.get(step["id_comando"])
+                if not row or not row["activo"] or row["nombre"] != step["comando"] or row["codigo"] != step["codigo"]:
+                    raise ApiError(409, "Cambió un comando de la DEMO. Vuelve a solicitar su creación.")
+            if not any(c["activo"] and c["nombre"] == "DETENER" and c["codigo"] == 9 for c in commands.values()):
+                raise ApiError(409, "La DEMO requiere un comando DETENER activo con código 9.")
+        demo = session.call("sp_crear_demo", (vid, data["nombre"], data.get("descripcion")))[0]
+        demo_id = demo["id_demo"]
+        for step in steps:
+            session.call("sp_agregar_movimiento_demo", (
+                demo_id, step["id_comando"], step["orden"], step["duracion_ms"], step["pausa_ms"],
+            ))
+        return self._demo(session, vid, demo_id)
+
     def vehicles(self) -> list[dict]:
         with self.database.session() as session:
             return session.call("sp_obtener_vehiculos")
@@ -147,26 +170,31 @@ class CatalogService:
                 ))[0]
                 return self._command(session, vid, row["id_comando"])
             if operation in {"update_command", "delete_command"}:
-                self._command(session, vid, resource_id)
+                command = self._command(session, vid, resource_id)
                 if operation == "update_command":
                     session.call("sp_actualizar_comando", (
                         resource_id, data["nombre"], data["codigo"],
                         data.get("descripcion"), data["activo"],
                     ))
                     return self._command(session, vid, resource_id)
+                self._check_preview(command, data, ("nombre", "codigo", "activo"))
                 session.call("sp_eliminar_comando", (resource_id,))
                 return {"mensaje": "Comando eliminado.", "recurso": "comando", "id": resource_id}
 
             if operation == "create_demo":
-                row = session.call("sp_crear_demo", (vid, data["nombre"], data.get("descripcion")))[0]
-                return self._demo(session, vid, row["id_demo"])
+                return self._create_demo(session, vid, data)
             if operation in {"update_demo", "delete_demo"}:
-                self._demo(session, vid, resource_id)
+                demo = self._demo(session, vid, resource_id)
                 if operation == "update_demo":
                     session.call("sp_actualizar_demo", (
                         resource_id, data["nombre"], data.get("descripcion"), data["activo"],
                     ))
                     return self._demo(session, vid, resource_id)
+                self._check_preview(demo, data, ("nombre", "activo"))
+                if "total_pasos" in data:
+                    movements = session.call("sp_obtener_movimientos_demo", (resource_id,))
+                    if len(movements) != data["total_pasos"]:
+                        raise ApiError(409, "Cambió la secuencia de la DEMO. Vuelve a solicitar su eliminación.")
                 session.call("sp_eliminar_demo", (resource_id,))
                 return {"mensaje": "DEMO eliminada.", "recurso": "demo", "id": resource_id}
 

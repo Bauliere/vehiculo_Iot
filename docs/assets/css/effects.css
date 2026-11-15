@@ -32,7 +32,7 @@ body {
 }
 
 :root[data-theme="silver"] #slats-effect .micro-slats {
-  opacity: .63;
+  opacity: .78;
 }
 
 .rb-warp-shell {
@@ -107,6 +107,10 @@ body {
   pointer-events: none;
 }
 
+#cursor-effect {
+  display: contents;
+}
+
 .view-navigation,
 .sidebar-card,
 .latest-panel,
@@ -161,7 +165,7 @@ body {
     transition-duration: .13s;
   }
 
-  :is(#demo-card, #session-card, .latest-panel, .history-panel)::after {
+  :is(#demo-card, #session-card)::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -173,30 +177,13 @@ body {
     transition: opacity .24s ease;
   }
 
-  :is(#demo-card, #session-card, .latest-panel, .history-panel)[data-tilting]::after {
+  :is(#demo-card, #session-card)[data-tilting]::after {
     opacity: 1;
   }
 }
 
 .rb-flip-nav {
   inset: 1px;
-}
-
-.rb-flip-tile {
-  inset: 1px;
-  z-index: 0;
-}
-
-.rb-flip-tile .rb-flip-front {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%);
-}
-
-.drive-panel > .rb-flip-surface {
-  z-index: 0;
-}
-
-.drive-panel:has(> .rb-flip-surface) > :not(.rb-flip-surface) {
-  position: relative;
 }
 
 #demo-start-effect {
@@ -236,14 +223,12 @@ body {
   line-height: 1.25;
 }
 
-@media (max-width: 900px) and (orientation: landscape), (max-height: 650px) and (orientation: landscape) {
-  .drive-panel > .rb-flip-surface {
-    display: none;
-  }
-}
-
 @media (max-width: 600px), (max-height: 490px) {
   #slats-effect .micro-slats {
     opacity: .37;
+  }
+
+  :root[data-theme="silver"] #slats-effect .micro-slats {
+    opacity: .66;
   }
 }

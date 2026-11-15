@@ -35,7 +35,8 @@ export function mountCardTilt(document, mouse, motion) {
         card.style.setProperty('--tilt-y', (position.x * 4.2).toFixed(2) + 'deg');
         card.style.setProperty('--tilt-light-x', (50 + position.x * 50).toFixed(1) + '%');
         card.style.setProperty('--tilt-light-y', (50 + position.y * 50).toFixed(1) + '%');
-        card.style.setProperty('--tilt-foil', Math.min(0.43, Math.hypot(position.x, position.y) * 0.47).toFixed(2));
+        const tilt = Math.hypot(position.x, position.y);
+        card.style.setProperty('--tilt-foil', Math.min(0.42, 0.1 + tilt * 0.28).toFixed(2));
       });
     }, { passive: true });
     card.addEventListener('pointerleave', reset);

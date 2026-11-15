@@ -17,7 +17,7 @@ export class ControlView {
   commands(commands, onCommand) {
     const container = this.get('extra-controls');
     container.replaceChildren();
-    for (const command of commands.filter(command => !['SUBIR_CAJA', 'BAJAR_CAJA'].includes(command.nombre))) {
+    for (const command of commands.filter(command => ['ALTERNAR_LUCES', 'ALTERNAR_SONIDO'].includes(command.nombre))) {
       const button = this.document.createElement('button');
       button.type = 'button';
       button.className = 'extra-control';
@@ -42,7 +42,7 @@ export class ControlView {
       button.addEventListener('click', () => onCommand(command.id_comando));
       container.append(button);
     }
-    if (!commands.length) container.textContent = 'Sin controles adicionales activos.';
+    if (!container.childElementCount) container.textContent = 'Sin luces ni sonido activos.';
   }
   demos(demos) {
     const select = this.get('demo-select');

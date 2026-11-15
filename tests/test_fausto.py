@@ -1,13 +1,16 @@
 import asyncio
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, call
 
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.errors import ApiError
 from app.main import create_app
+from app.services.catalog_service import CatalogService
 from app.services.demo_service import DemoService
 from app.services.fausto_service import FaustoInput, FaustoStep, FaustoService, Interpretation
 
@@ -51,6 +54,76 @@ class FaustoContractTests(TestCase):
             for _ in range(4):
                 self.assertEqual(client.post(path, headers=headers, json=body).status_code, 200)
             self.assertEqual(client.post(path, headers=headers, json=body).status_code, 429)
+
+    def test_catalog_plan_requires_admin_confirmation_and_is_applied_once(self):
+        admin_key, control_key = "a" * 40, "c" * 40
+        app = create_app(Settings(_env_file=None, public_control_enabled=True,
+                                  api_admin_key=admin_key, api_control_key=control_key, gemini_api_key="mock"))
+        runtime = app.state.runtime
+        command = {"id_comando": 47, "nombre": "REVISIÓN", "codigo": 21, "activo": 1}
+        runtime.catalog.commands = Mock(return_value=[command])
+        runtime.catalog.modify = Mock(return_value={"id": 47, "recurso": "comando"})
+        runtime.fausto.gemini.interpret = lambda source: Interpretation(
+            respuesta="Eliminar el comando revisión.", transcripcion="", pasos=[],
+            cambio_catalogo={"accion": "eliminar_comando", "nombre": "revision"},
+        )
+        with TestClient(app) as client:
+            headers = {"X-API-Key": client.get("/control/sesion").json()["token"]}
+            path = "/vehiculos/1/fausto"
+            result = client.post(f"{path}/interpretar", headers=headers, json={"texto": "Elimina revisión"})
+            self.assertEqual(result.status_code, 200)
+            proposed = result.json()
+            change = proposed["cambio_catalogo"]
+            self.assertEqual(change["id"], 47)
+            self.assertEqual(change["nombre"], "REVISIÓN")
+            plan_path = f"{path}/{proposed['plan_id']}"
+            self.assertEqual(client.post(f"{plan_path}/ejecutar", headers=headers).status_code, 409)
+            self.assertEqual(client.post(f"{plan_path}/confirmar", headers=headers).status_code, 403)
+            self.assertEqual(client.post(f"{plan_path}/confirmar", headers={"X-API-Key": control_key}).status_code, 403)
+            runtime.catalog.modify.assert_not_called()
+            admin = {"X-API-Key": admin_key}
+            self.assertEqual(client.post(f"{plan_path.replace('/1/', '/2/')}/confirmar", headers=admin).status_code, 404)
+            result = client.post(f"{plan_path}/confirmar", headers=admin)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json()["estado"], "confirmado")
+            self.assertEqual(client.post(f"{plan_path}/confirmar", headers=admin).json(), result.json())
+            runtime.catalog.modify.assert_called_once_with("delete_command", 1, 47, change)
+
+    def test_demo_steps_share_the_transaction_and_revalidate_command_codes(self):
+        saved = {"id_demo": 25, "nombre": "Recorrido corto", "activo": 1}
+        commands = [
+            {"id_comando": 32, "nombre": "AVANZAR", "codigo": 1, "activo": 1},
+            {"id_comando": 33, "nombre": "DETENER", "codigo": 9, "activo": 1},
+        ]
+        rows = {
+            "sp_obtener_vehiculo": [{"id_vehiculo": 1}],
+            "sp_obtener_comandos_vehiculo": commands,
+            "sp_crear_demo": [{"id_demo": 25}],
+            "sp_agregar_movimiento_demo": [],
+            "sp_obtener_demos": [saved],
+        }
+        procedures = Mock()
+        procedures.call.side_effect = lambda name, args: rows[name]
+        database = Mock()
+        database.session.return_value = nullcontext(procedures)
+        catalog = CatalogService(database)
+        payload = {"nombre": "Recorrido corto", "pasos": [
+            {"id_comando": 32, "comando": "AVANZAR", "codigo": 1,
+             "orden": 1, "duracion_ms": 500, "pausa_ms": 120},
+        ]}
+        self.assertEqual(catalog.modify("create_demo", 1, payload=payload), saved)
+        database.session.assert_called_once_with(write=True)
+        procedures.call.assert_has_calls([
+            call("sp_crear_demo", (1, "Recorrido corto", None)),
+            call("sp_agregar_movimiento_demo", (25, 32, 1, 500, 120)),
+        ])
+        procedures.call.reset_mock()
+        commands[0]["codigo"] = 4
+        with self.assertRaises(ApiError):
+            catalog.modify("create_demo", 1, payload=payload)
+        self.assertEqual(procedures.call.call_args_list, [
+            call("sp_obtener_vehiculo", (1,)), call("sp_obtener_comandos_vehiculo", (1,)),
+        ])
 
 
 class FaustoRunTests(IsolatedAsyncioTestCase):

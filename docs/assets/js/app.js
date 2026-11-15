@@ -65,6 +65,7 @@ class ControlApplication {
         if (this.joystick.active || this.lever.active) void this.controller.stop();
       },
       onRun: () => this.updateControls(),
+      onCatalogChange: () => void this.loadCatalog(),
       stop: () => this.controller.stop(),
     });
     this.joystick = new Joystick(this.view.get('joystick'), {
@@ -162,7 +163,8 @@ class ControlApplication {
     };
     const host = this.view.get('demo-start-effect');
     const removeFallback = bindHoldGesture(host.querySelector('button'), DEMO_HOLD_MS, confirmDemo);
-    void import('../vendor/iot-effects.js').then(({ mountDemoHold, mountVisuals }) => {
+    void import('../vendor/iot-effects.js').then(({ mountDemoHold, mountVisuals, mountChatEffects }) => {
+      this.fausto.setEffects(mountChatEffects(this.fausto.dialog));
       removeFallback();
       this.view.demoButton = mountDemoHold(host, confirmDemo, DEMO_HOLD_MS);
       mountVisuals(document);
@@ -178,7 +180,7 @@ class ControlApplication {
       await this.api.connectControl({ force });
       this.state.update({ authError: null });
     } catch (error) {
-      this.sessionNotice = 'Acceso automático no disponible. Revisa el servidor en Ajustes.';
+      this.sessionNotice = 'Acceso automático no disponible. Pulsa Actualizar en la barra superior.';
       this.view.text('session-feedback', error.status === 404 || error.status === 403
         ? 'Activa el control público en la instancia con la guía incluida.' : error.message);
     } finally {
@@ -217,12 +219,13 @@ class ControlApplication {
       this.view.vehicle(detail.vehiculo);
       this.view.commands(catalog.extras(), id => this.controller.requestCommand(id));
       this.feedback.renderAux();
+      const previousDemo = Number(this.view.get('demo-select').value);
       this.view.demos(this.demos);
       this.ready = true;
-      if (this.demos.some(demo => demo.id_demo === 1)) {
-        this.view.get('demo-select').value = '1';
-        void this.selectDemo();
-      }
+      const nextDemo = this.demos.some(demo => demo.id_demo === previousDemo) ? previousDemo
+        : this.demos.some(demo => demo.id_demo === 1) ? 1 : this.demos[0]?.id_demo;
+      this.view.get('demo-select').value = nextDemo ? String(nextDemo) : '';
+      void this.selectDemo();
       this.state.update({ message: 'Vehículo listo.', tone: 'neutral' });
     } catch (error) {
       this.state.update({ message: error.message, tone: 'error' });
@@ -285,10 +288,10 @@ class ControlApplication {
     const authError = this.state.value.authError;
     const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected &&
       !demo && !this.fausto.run && !uncertain && phase !== 'stopping';
-    const allDirections = ['forward', 'backward', 'left', 'right'].every(name => this.catalog.direction(name));
+    const hasDirection = ['forward', 'backward', 'left', 'right'].some(name => this.catalog.direction(name));
     const crossingNeutral = this.controller.keepGestureDuringStop && phase === 'stopping' &&
       this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo;
-    this.joystick.setEnabled((enabled || crossingNeutral) && allDirections);
+    this.joystick.setEnabled((enabled || crossingNeutral) && hasDirection);
     const boxCommands = ['SUBIR_CAJA', 'BAJAR_CAJA'].every(name => this.catalog.all().some(command => command.nombre === name));
     this.lever?.setEnabled((enabled || crossingNeutral) && boxCommands);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
@@ -297,13 +300,12 @@ class ControlApplication {
       : this.api.hasKey() ? 'valid' : 'pending';
     const labels = { invalid: 'Sin permiso', offline: 'Sin conexión', valid: 'Disponible', pending: 'Conectando' };
     this.view.get('session-indicator').dataset.state = accessState;
-    this.view.get('access-dot').dataset.state = accessState;
     this.view.text('session-status', labels[accessState]);
     this.view.get('session-reconnect').disabled = this.sessionLoading;
     if (!this.sessionNotice) this.view.text('session-feedback', this.sessionLoading ? 'Conectando automáticamente…'
       : this.api.hasKey() ? 'Sesión de control lista.' : 'No hay sesión de control disponible.');
     const notice = uncertain ? 'Detención sin confirmar · revisa Monitoreo'
-      : this.sessionNotice ? 'Acceso no disponible · abre Ajustes'
+      : this.sessionNotice ? 'Acceso no disponible · pulsa Actualizar'
         : phase === 'stopping' ? 'Deteniendo…'
           : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
             : !this.api.hasKey() ? 'Preparando acceso…'

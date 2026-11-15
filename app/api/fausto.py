@@ -4,18 +4,19 @@ from fastapi import APIRouter, Depends, Path, Request
 from pydantic import ValidationError
 
 from app.errors import ApiError
-from app.security import require_control
+from app.security import require_admin, require_control
 from app.services.fausto_service import FaustoInput, MAX_BODY_BYTES
 
 VehicleId = Annotated[int, Path(ge=1, le=2_147_483_647)]
 PlanId = Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{22}$")]
-router = APIRouter(prefix="/vehiculos/{id_vehiculo}/fausto", tags=["Fausto.IA"],
-                   dependencies=[Depends(require_control)])
+router = APIRouter(prefix="/vehiculos/{id_vehiculo}/fausto", tags=["Fausto.IA"])
+control_access = [Depends(require_control)]
 
 
 @router.post(
     "/interpretar",
     summary="Interpretar una instrucción de texto o voz",
+    dependencies=control_access,
     openapi_extra={"requestBody": {"required": True, "content": {"application/json": {
         "schema": {"type": "object", "properties": {
             "texto": {"type": "string"},
@@ -39,11 +40,19 @@ async def interpret(request: Request, id_vehiculo: VehicleId):
     return await request.app.state.runtime.fausto.interpret(id_vehiculo, source, client)
 
 
-@router.post("/{plan_id}/ejecutar", status_code=202, summary="Ejecutar un plan confirmado")
+@router.post("/{plan_id}/ejecutar", status_code=202, summary="Ejecutar un plan de movimiento",
+             dependencies=control_access)
 async def execute(request: Request, id_vehiculo: VehicleId, plan_id: PlanId):
     return await request.app.state.runtime.fausto.execute(id_vehiculo, plan_id)
 
 
-@router.post("/{plan_id}/cancelar", summary="Cancelar el plan y detener el recorrido")
+@router.post("/{plan_id}/cancelar", summary="Cancelar una propuesta o detener el recorrido",
+             dependencies=control_access)
 async def cancel(request: Request, id_vehiculo: VehicleId, plan_id: PlanId):
     return await request.app.state.runtime.fausto.cancel(id_vehiculo, plan_id)
+
+
+@router.post("/{plan_id}/confirmar", summary="Confirmar la creación o eliminación de un registro",
+             dependencies=[Depends(require_admin)])
+async def confirm(request: Request, id_vehiculo: VehicleId, plan_id: PlanId):
+    return await request.app.state.runtime.fausto.confirm(id_vehiculo, plan_id)

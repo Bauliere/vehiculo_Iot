@@ -35,6 +35,7 @@ const TargetCursor = ({
   blendMode = 'difference',
   showLabel = true,
   clickEffect = true,
+  embedded = false,
   container
 }) => {
   const [host, setHost] = useState(null);
@@ -77,9 +78,6 @@ const TargetCursor = ({
     if (!host || !root) return undefined;
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const style = document.createElement('style');
-    document.head.appendChild(style);
-
     const pointer = { x: 0, y: 0, inside: false, seen: false, pressed: false };
     const centerX = { x: 0, v: 0 };
     const centerY = { x: 0, v: 0 };
@@ -103,18 +101,14 @@ const TargetCursor = ({
 
     const scopeOf = () => resolveElement(settingsRef.current.container);
 
-    const hideCursor = () => {
-      const s = settingsRef.current;
-      const scope = scopeOf();
-      if (scope !== lastScope) {
-        lastScope?.removeAttribute('data-target-cursor-scope');
-        scope?.setAttribute('data-target-cursor-scope', '');
-        lastScope = scope;
-      }
-      const selector = scope ? '[data-target-cursor-scope]' : 'html';
-      const rule =
-        s.hideDefaultCursor && pointer.inside ? `${selector}, ${selector} * { cursor: none !important; }` : '';
-      if (style.textContent !== rule) style.textContent = rule;
+    const syncNativeCursor = () => {
+      const scope = settingsRef.current.hideDefaultCursor && pointer.inside
+        ? (document.querySelector('dialog[open]') || scopeOf() || document.documentElement)
+        : null;
+      if (scope === lastScope) return;
+      lastScope?.removeAttribute('data-target-cursor-scope');
+      scope?.setAttribute('data-target-cursor-scope', '');
+      lastScope = scope;
     };
 
     const findTarget = (x, y, element) => {
@@ -147,7 +141,8 @@ const TargetCursor = ({
       if (pointer.inside && now - lastTargetCheck > 100) {
         const element = document.elementFromPoint(pointer.x, pointer.y);
         const inside = insideScope(pointer.x, pointer.y, element);
-        if (!inside) pointer.inside = false;
+        pointer.inside = inside;
+        syncNativeCursor();
         lockOn(inside ? findTarget(pointer.x, pointer.y, element) : null);
         lastTargetCheck = now;
       }
@@ -260,7 +255,7 @@ const TargetCursor = ({
         root.style.setProperty('--target-cursor-color', color);
         lastColor = color;
       }
-      root.style.opacity = Math.max(0, Math.min(1, presence.x)).toFixed(3);
+      root.style.opacity = pointer.inside ? Math.max(0, Math.min(1, presence.x)).toFixed(3) : '0';
 
       const resting =
         !pointer.inside &&
@@ -281,12 +276,12 @@ const TargetCursor = ({
       if (!raf) raf = requestAnimationFrame(frame);
     };
     wakeRef.current = () => {
-      hideCursor();
+      syncNativeCursor();
       wake();
     };
 
     const insideScope = (x, y, element) => {
-      if (element?.closest?.('[data-cursor-ignore]')) return false;
+      if (element?.closest?.('[data-cursor-ignore], input, textarea, [contenteditable="true"]')) return false;
       const dialog = document.querySelector('dialog[open]');
       if (dialog) return element !== dialog && dialog.contains(element);
       const scope = scopeOf();
@@ -304,10 +299,8 @@ const TargetCursor = ({
       pointer.x = event.clientX;
       pointer.y = event.clientY;
       const inside = insideScope(pointer.x, pointer.y, event.target);
-      if (inside !== pointer.inside) {
-        pointer.inside = inside;
-        hideCursor();
-      }
+      pointer.inside = inside;
+      syncNativeCursor();
       lockOn(inside ? findTarget(pointer.x, pointer.y, event.target) : null);
       wake();
     };
@@ -327,7 +320,7 @@ const TargetCursor = ({
       pointer.inside = false;
       pointer.pressed = false;
       lockOn(null);
-      hideCursor();
+      syncNativeCursor();
       wake();
     };
 
@@ -354,7 +347,6 @@ const TargetCursor = ({
       document.documentElement.removeEventListener('pointerleave', onLeave);
       window.removeEventListener('blur', onLeave);
       lastScope?.removeAttribute('data-target-cursor-scope');
-      style.remove();
     };
   }, [host]);
 
@@ -364,7 +356,7 @@ const TargetCursor = ({
 
   if (!host) return null;
 
-  return createPortal(
+  const graphic = (
     <div ref={rootRef} className="target-cursor" style={{ mixBlendMode: blendMode, opacity: 0 }} aria-hidden="true">
       {CORNER_ANGLES.map((angle, i) => (
         <span
@@ -377,9 +369,9 @@ const TargetCursor = ({
       ))}
       <span ref={dotRef} className="target-cursor__dot" />
       <span ref={labelRef} className="target-cursor__label" />
-    </div>,
-    host
+    </div>
   );
+  return embedded ? graphic : createPortal(graphic, host);
 };
 
 export default TargetCursor;

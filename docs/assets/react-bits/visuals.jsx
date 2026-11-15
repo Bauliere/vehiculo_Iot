@@ -101,7 +101,7 @@ export function mountVisuals(document) {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const mouse = matchMedia('(hover: hover) and (pointer: fine)');
   const small = matchMedia('(max-width: 600px), (max-height: 490px), (pointer: coarse)');
-  const paletteKeys = ['bg', 'glow', 'surface-deep', 'text', 'accent', 'accent-strong'];
+  const paletteKeys = ['bg', 'slat-accent', 'surface-deep', 'text', 'accent', 'accent-strong'];
   const logo = document.querySelector('#theme-button img').src;
   const background = withVisualRoot(document.getElementById('slats-effect'));
   const cursorHost = document.getElementById('cursor-effect');
@@ -157,16 +157,13 @@ export function mountVisuals(document) {
     }
   };
 
-  let previousView = html.dataset.view;
   const sync = () => {
     const palette = values();
     const active = webgl && !motion.matches;
     const animate = !motion.matches;
-    const viewChanged = previousView !== html.dataset.view;
-    previousView = html.dataset.view;
     background.render(active && <MicroSlats
       preset="swell"
-      color={palette.accent}
+      color={palette['slat-accent'] || palette.accent}
       glintColor={palette['accent-strong']}
       backgroundColor={palette.bg}
       slatWidth={small.matches ? 7 : 11.5}
@@ -192,15 +189,13 @@ export function mountVisuals(document) {
       dotSize={2}
       blendMode="normal"
       showLabel={false}
-      hideDefaultCursor={false}
+      embedded
     />);
     fausto.render(active && <Fausto host={logoHost} logo={logo}
       accent={palette['accent-strong']} paper={palette['surface-deep']} />);
     syncHeadings(palette, active);
 
     for (const surface of surfaces) {
-      const onView = surface.host.dataset.flipSurface === 'view' && viewChanged;
-      if (onView) surface.turned = !surface.turned;
       surface.root.render(animate && <FlipSurface turned={surface.turned}
         compact={surface.host.dataset.flipSurface === 'nav'} />);
     }

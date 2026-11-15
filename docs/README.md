@@ -23,10 +23,10 @@ La dirección de la API y el vehículo se configuran en `assets/js/config.js`. E
 
 1. Espera a que los indicadores de API, RDS y WSS estén disponibles.
 2. La página obtiene automáticamente una sesión temporal de control. No hay un campo de clave. Confirma **DETENER** antes de manejar.
-3. Usa el joystick o las flechas del teclado. Al soltar se envía **DETENER**. La palanca sube y baja la caja; la barra inferior contiene luces y sonido.
+3. Usa el joystick o las flechas del teclado. Un toque produce un movimiento breve. Mantener la dirección renueva el pulso hasta soltar y entonces se envía **DETENER**. Carga el firmware 3.1.3 para que las renovaciones mantengan la salida activa. La palanca sube y baja la caja y la barra inferior contiene luces y sonido.
 4. Abre **DEMO** para consultar el recorrido. Mantén pulsado **Iniciar DEMO** hasta que se llene el botón. La DEMO 1 se selecciona al cargar cuando está disponible. **Cancelar** y **DETENER** siguen disponibles durante el recorrido.
 
-Pulsa el icono junto a **CONTROL / IoT** para cambiar entre Bosque, Gris violeta, EVA-01, Rosa claro, Rojo grafito y Plata sobre negro. La paleta se recuerda en el navegador. **Ajustes → Reconectar** recupera el acceso si falló la conexión inicial.
+La primera visita usa **Plata sobre negro**. Pulsa el icono junto a **CONTROL / IoT** para cambiar de paleta. El navegador recuerda tu elección. Si falla la conexión inicial, pulsa **Actualizar** en la barra superior para recuperar el acceso.
 
 Los títulos, Fausto, el fondo y los paneles usan React Bits. El cursor animado aparece con ratón. El navegador muestra la versión estática si no puede ejecutar los efectos WebGL o si está activada la reducción de movimiento. Para editar y recompilar los componentes, consulta el [README del repositorio](../README.md#efectos-visuales).
 
@@ -42,13 +42,17 @@ Los indicadores de luces y sonido representan la alternancia solicitada y observ
 
 El icono de pantalla completa abre CONTROL y oculta la navegación. Pulsa el mismo botón o Esc para volver. Cuando el navegador permite pantalla completa, también oculta su propia barra.
 
-**Fausto.IA** está en la barra de funciones. Escribe una orden o pulsa el micrófono, habla y pulsa de nuevo para enviar. La grabación se corta a los 15 segundos. Revisa la secuencia antes de tocar **Ejecutar**. **Detener** cancela el recorrido en curso.
+**Fausto.IA** está en la barra de funciones. Escribe una instrucción o usa el micrófono. Un toque inicia la grabación y el siguiente la envía. Si mantienes pulsado, se envía al soltar. Si la grabación supera dos minutos o el tamaño que admite la API, se descarta y aparece un aviso.
 
-Prueba con «Avanza 10 segundos y luego gira a la derecha». El servidor interpreta el texto o audio con Gemini Flash-Lite y la ESP recibe los pasos temporizados por el WSS existente. El recorrido cambia el estado reportado y no crea una DEMO guardada. La confirmación corresponde al servidor. Comprueba la actuación del vehículo en el Monitor Serie y físicamente.
+Con «Avanza 10 segundos y luego gira a la derecha», Fausto muestra los pasos interpretados y los ejecuta automáticamente. La ESP recibe el recorrido por WSS. **Detener** cancela el recorrido en curso. Puedes consultar las órdenes recibidas en el Monitor Serie.
+
+Para crear o eliminar comandos y DEMO, revisa la propuesta e introduce la clave de administrador en ese formulario antes de confirmar. Ejemplos: «Crea un comando llamado Prueba con código 10», «Crea una DEMO llamada Patio que avance un segundo y gire a la derecha», «Borra el comando Prueba» o «Borra la DEMO Patio». Los comandos del catálogo requieren una acción reconocida por el firmware para mover el carrito.
 
 Para habilitarlo, actualiza FastAPI en EC2 y configura `GEMINI_API_KEY` en su `.env` privado. `GEMINI_MODEL` permite cambiar el modelo y `FAUSTO_DAILY_LIMIT` fija el máximo de consultas por día UTC mientras corre el proceso. Si reinicias FastAPI, el contador vuelve a empezar. El audio y el texto se envían a Google para su interpretación. [Configurar Gemini](https://aistudio.google.com/apikey) · [Precios y cuota gratuita](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-lite)
 
 ### Actualizar la instancia
+
+Si Fausto.IA ya está instalado en EC2, copia los archivos `app/api/fausto.py`, `app/services/fausto_service.py` y `app/services/catalog_service.py` a sus mismas rutas y reinicia la tarea `VehiculoIoT-API`. Swagger debe mostrar la operación `POST /vehiculos/{id_vehiculo}/fausto/{plan_id}/confirmar`.
 
 1. Copia `Fausto-IA-EC2.zip` a `C:\Users\Administrator\Desktop\websocket_iot` en el escritorio remoto.
 2. En PowerShell de la instancia, guarda una copia del código actual, extrae la actualización y comprueba que FastAPI la reconoce.
@@ -73,7 +77,7 @@ Para habilitarlo, actualiza FastAPI en EC2 y configura `GEMINI_API_KEY` en su `.
    Invoke-RestMethod 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
    ```
 
-5. En CONTROL, envía primero una orden y comprueba los tiempos del plan. Pulsa **Ejecutar** cuando tengas el carrito a la vista. Para una prueba corta, usa «Muévete tantito hacia delante».
+5. En CONTROL, abre Fausto.IA con el carrito a la vista. Para una prueba corta, envía «Muévete tantito hacia delante». La orden se ejecuta al terminar la interpretación. Comprueba el paso que muestra el chat y el evento que recibe la ESP.
 
 ## Acceso automático y AWS
 

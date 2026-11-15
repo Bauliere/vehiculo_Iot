@@ -1,6 +1,7 @@
 import { commandLabel } from '../domain/catalog.js';
 
 const RELEASE_WAIT_MS = 200;
+const DRIVE_RENEW_MS = 350;
 
 /** Coordina órdenes, DEMO y parada. Un resultado antiguo nunca cambia la acción actual. */
 export class ControlController {
@@ -9,6 +10,8 @@ export class ControlController {
     this.revision = 0;
     this.pending = null;
     this.inFlight = null;
+    this.heldDirection = null;
+    this.driveTimer = null;
     this.stopPromise = null;
     this.expediteStop = null;
     this.keepGestureDuringStop = false;
@@ -22,28 +25,50 @@ export class ControlController {
 
   permitted() {
     if (!this.api.hasKey()) throw new Error('La sesión de control todavía no está disponible.');
-    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Pulsa Reconectar en Ajustes.');
+    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Pulsa Actualizar en la barra superior.');
     if (!this.canOperate()) throw new Error('Espera a que la API y WebSocket estén disponibles.');
   }
 
   requestDirection(direction) {
     if (direction === 'stop') return this.releaseControl({ keepGesture: true });
     const command = this.catalog.direction(direction);
-    if (command) this.requestCommand(command.id_comando);
+    if (command) return this.requestCommand(command.id_comando, { held: true });
+    return this.releaseControl({ keepGesture: true });
   }
 
-  requestCommand(id) {
+  requestCommand(id, { held = false } = {}) {
     try {
       this.permitted();
       if ((this.stopPromise && !this.keepGestureDuringStop) || this.demoId !== null || ['uncertain', 'demo'].includes(this.state.value.phase)) return;
       const command = this.catalog.get(id);
       if (!command) throw new Error('El comando no está activo en este vehículo.');
       if (command.nombre === 'DETENER') return this.stop();
+      this.clearHeldDirection();
+      if (held) this.heldDirection = command;
       // Solo se conserva la última dirección pendiente: nunca una cola de movimientos viejos.
       this.pending = command;
       clearTimeout(this.timer);
+      if (held) return this.drain();
       this.timer = setTimeout(() => this.drain(), 100);
     } catch (error) { this.error(error); }
+  }
+
+  clearHeldDirection() {
+    clearTimeout(this.driveTimer);
+    this.driveTimer = null;
+    this.heldDirection = null;
+  }
+
+  renewDirection(command, sentAt) {
+    // El pulso del firmware dura 500 ms. Renueva antes de que expire y mide
+    // desde el envío anterior para incluir el tiempo de respuesta de la API.
+    const wait = Math.max(0, DRIVE_RENEW_MS - (Date.now() - sentAt));
+    this.driveTimer = setTimeout(() => {
+      this.driveTimer = null;
+      if (this.heldDirection !== command || this.pending || this.inFlight || this.stopPromise || this.demoId !== null) return;
+      this.pending = command;
+      void this.drain();
+    }, wait);
   }
 
   newIntent(command, label) {
@@ -59,8 +84,9 @@ export class ControlController {
     if (this.inFlight || this.stopPromise || this.demoId !== null || this.state.value.phase === 'uncertain' || !this.pending) return;
     const command = this.pending;
     this.pending = null;
-    try { this.permitted(); } catch (error) { this.error(error); return; }
+    try { this.permitted(); } catch (error) { this.clearHeldDirection(); this.error(error); return; }
     const revision = this.newIntent(command, commandLabel(command));
+    const sentAt = Date.now();
     const operation = this.api.move(this.vehicleId, command.id_comando).then(result => {
       this.validateMovement(result, command);
       return result;
@@ -72,6 +98,7 @@ export class ControlController {
         message: 'Orden aceptada. Comprueba su evento WSS.', tone: 'success' });
     } catch (error) {
       if (revision === this.revision) {
+        this.clearHeldDirection();
         this.pending = null;
         this.error(error);
         // Un timeout no demuestra que el servidor haya descartado el POST.
@@ -83,6 +110,7 @@ export class ControlController {
     } finally {
       if (this.inFlight === operation) this.inFlight = null;
       if (this.pending && !this.stopPromise) void this.drain();
+      else if (this.heldDirection === command && revision === this.revision) this.renewDirection(command, sentAt);
     }
   }
 
@@ -96,6 +124,7 @@ export class ControlController {
     try {
       this.permitted();
       if (!Number.isInteger(id) || id <= 0 || this.demoId !== null || this.inFlight || this.stopPromise || this.state.value.phase === 'uncertain') return;
+      this.clearHeldDirection();
       clearTimeout(this.timer);
       this.pending = null;
       this.onNeutral();
@@ -124,6 +153,7 @@ export class ControlController {
   }
 
   releaseControl({ keepGesture = false } = {}) {
+    this.clearHeldDirection();
     if (!this.stopPromise && !this.pending && !this.inFlight && !this.state.value.commandId && !this.demoId) return;
     return this.stop({ keepGesture, release: true });
   }
@@ -146,6 +176,7 @@ export class ControlController {
   }
 
   stop({ keepGesture = false, release = false } = {}) {
+    this.clearHeldDirection();
     clearTimeout(this.timer);
     this.pending = null;
     if (!keepGesture) this.onNeutral();
@@ -206,7 +237,7 @@ export class ControlController {
       if (revision === this.revision) {
         this.error(error);
         const reason = error.status === 401
-          ? 'La API rechazó la sesión (HTTP 401). Pulsa Reconectar en Ajustes y vuelve a pulsar DETENER.'
+          ? 'La API rechazó la sesión (HTTP 401). Pulsa Actualizar en la barra superior y vuelve a pulsar DETENER.'
           : error.status === 403
             ? 'La sesión no tiene permiso (HTTP 403). Revisa la configuración del servidor y vuelve a pulsar DETENER.'
             : `${error.message || 'No hubo respuesta válida de la API.'} Vuelve a pulsar DETENER.`;
@@ -230,12 +261,18 @@ export class ControlController {
     this.lastEventSignature = signature;
     if (event.tipo === 'estado_inicial') return; // Informativo; nunca repetir el último movimiento.
     const stopping = ['stopping', 'uncertain'].includes(this.state.value.phase);
+    if (event.tipo === 'movimiento_individual' && event.comando === 'DETENER' && this.heldDirection && !stopping) {
+      if (this.pending === this.heldDirection) this.pending = null;
+      this.clearHeldDirection();
+      this.onNeutral();
+    }
     if (stopping && ['demo_inicio', 'demo_movimiento'].includes(event.tipo) && Number.isInteger(event.id_demo) && event.id_demo > 0) {
       // Recordar qué cancelar sin permitir que un evento reactive la vista durante STOP.
       this.demoId = event.id_demo;
       return;
     }
     if (event.tipo === 'demo_inicio' && Number.isInteger(event.id_demo) && event.id_demo > 0 && !stopping) {
+      this.clearHeldDirection();
       this.pending = null;
       this.onNeutral();
       this.demoId = event.id_demo;
@@ -243,6 +280,7 @@ export class ControlController {
         event: `Inicio de DEMO · ${event.timestamp}`, message: 'DEMO en ejecución en el servidor.' });
     } else if (event.tipo === 'demo_movimiento' && Number.isInteger(event.id_demo) && event.id_demo > 0 &&
       Number.isInteger(event.orden) && event.orden > 0 && Number.isInteger(event.duracion_ms) && Number.isInteger(event.pausa_ms) && !stopping) {
+      this.clearHeldDirection();
       this.pending = null;
       this.onNeutral();
       this.demoId = event.id_demo;
@@ -262,7 +300,7 @@ export class ControlController {
   }
 
   connectionLost() {
-    if (this.pending || this.inFlight || this.demoId || this.state.value.commandId) void this.stop();
+    if (this.heldDirection || this.pending || this.inFlight || this.demoId || this.state.value.commandId) void this.stop();
   }
 
   error(error) {

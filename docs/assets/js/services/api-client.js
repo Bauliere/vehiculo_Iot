@@ -45,7 +45,7 @@ export class ApiClient {
   }
 
   async request(path, { method = 'GET', body, signal, authorized = false, retried = false,
-    timeoutMs = this.timeoutMs, keepalive = false } = {}) {
+    timeoutMs = this.timeoutMs, keepalive = false, adminKey } = {}) {
     if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')
         || path.includes('\\') || path.includes('..')) {
       throw new ApiError('La ruta del servicio no es válida.', { code: 'CONFIG' });
@@ -65,7 +65,8 @@ export class ApiClient {
     try {
       const headers = { Accept: 'application/json' };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
-      if (authorized) headers['X-API-Key'] = this.#key;
+      if (adminKey !== undefined) headers['X-API-Key'] = adminKey;
+      else if (authorized) headers['X-API-Key'] = this.#key;
       const response = await this.fetch(`${this.baseUrl}${path}`, {
         method, headers, body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error', keepalive,
@@ -153,6 +154,18 @@ export class ApiClient {
     }
     return this.request(`${this.vehiclePath(vehicleId)}/fausto/${planId}/${action}`, {
       method: 'POST', authorized: true, keepalive: action === 'cancelar',
+    });
+  }
+  confirmFaustoChange(vehicleId, planId, adminKey) {
+    if (!/^[A-Za-z0-9_-]{22}$/.test(planId)) {
+      throw new ApiError('Identificador de cambio inválido.', { code: 'VALIDATION' });
+    }
+    const key = adminKey.trim();
+    if (!/^[\x21-\x7e]{32,2048}$/.test(key) || key.startsWith('API_ADMIN_KEY=')) {
+      throw new ApiError('Introduce solo el valor de la clave de administrador.', { code: 'VALIDATION' });
+    }
+    return this.request(`${this.vehiclePath(vehicleId)}/fausto/${planId}/confirmar`, {
+      method: 'POST', adminKey: key,
     });
   }
   health(options) { return this.request('/health', options); }

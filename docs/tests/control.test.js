@@ -26,6 +26,48 @@ test('arrastre rápido conserva la última dirección y no envía una cola obsol
   await control.drain();
   assert.deepEqual(calls, ['move:4']);
 });
+test('un toque del joystick envía inmediatamente una dirección y la detiene al soltar', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { control, calls } = setup();
+  const motion = control.requestDirection('forward');
+  const released = control.releaseControl();
+  await Promise.all([motion, released]);
+  t.mock.timers.tick(1000);
+  assert.deepEqual(calls, ['move:1', 'move:9']);
+});
+test('mantener el joystick renueva la dirección sin solapar solicitudes y suelta con una parada', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { control, calls, api } = setup();
+  const renewal = deferred();
+  const move = api.move;
+  api.move = (v, c) => {
+    if (c === 1 && calls.length === 1) {
+      calls.push('move:1');
+      return renewal.promise;
+    }
+    return move(v, c);
+  };
+  await control.requestDirection('forward');
+  t.mock.timers.tick(349);
+  assert.deepEqual(calls, ['move:1']);
+  t.mock.timers.tick(1);
+  t.mock.timers.tick(600);
+  assert.deepEqual(calls, ['move:1', 'move:1']);
+  const released = control.releaseControl();
+  renewal.resolve({ id_vehiculo: 1, id_comando: 1 });
+  await released;
+  t.mock.timers.tick(1000);
+  assert.deepEqual(calls, ['move:1', 'move:1', 'move:9']);
+});
+test('perder la conexión cancela la dirección sostenida antes de recuperar el control', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { control, calls } = setup();
+  await control.requestDirection('forward');
+  control.connectionLost();
+  await control.stopPromise;
+  t.mock.timers.tick(1000);
+  assert.deepEqual(calls, ['move:1', 'move:9']);
+});
 test('DETENER descarta una dirección aún no enviada', async () => {
   const {control,calls} = setup();
   control.requestCommand(1);

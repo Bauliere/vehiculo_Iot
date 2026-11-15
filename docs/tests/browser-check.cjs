@@ -20,6 +20,7 @@ const server = http.createServer((req, res) => {
   });
 });
 const API = 'https://vehiculo-iot.34-225-114-88.sslip.io', KEY = 'prueba-sesion-temporal-sin-valor-real-123456';
+const ADMIN_KEY = 'prueba-clave-administrador-sin-valor-real-123456';
 const names = ['AVANZAR', 'RETROCEDER', 'GIRAR_IZQUIERDA', 'GIRAR_DERECHA', 'SUBIR_CAJA', 'BAJAR_CAJA', 'ALTERNAR_LUCES', 'ALTERNAR_SONIDO', 'DETENER'];
 const commands = names.map((nombre, i) => ({ nombre, id_comando: i + 1, codigo: i + 1, id_vehiculo: 1, activo: 1 }));
 const vehicle = { id_vehiculo: 1, nombre: 'Maquina de carga', modelo: 'Control de carga RC', activo: 1 };
@@ -38,6 +39,16 @@ let browser, activePage;
   const calls = [], sockets = new Set(), errors = [], reads = { state:0, history:0 };
   const planId = '0123456789abcdefghijkl';
   const assistantDemo = { id_demo: 1900000000, fausto_id: planId };
+  const pendingChanges = new Map();
+  const movementPrompt = 'Oye, avanza 10 segundos y luego gira a la derecha';
+  let allowInterpretation;
+  const pendingInterpretation = new Promise(resolve => { allowInterpretation = resolve; });
+  const examples = [
+    ['Crea el comando AUXILIAR con código 31', { accion: 'crear_comando', nombre: 'AUXILIAR', codigo: 31, compatible_firmware: false }],
+    ['Elimina el comando AUXILIAR', { accion: 'eliminar_comando', nombre: 'AUXILIAR', id: 10 }],
+    ['Crea la DEMO Ida con avance', { accion: 'crear_demo', nombre: 'Ida', total_pasos: 1, pasos: [{ comando: 'AVANZAR', duracion_ms: 500 }] }],
+    ['Elimina la DEMO Ida', { accion: 'eliminar_demo', nombre: 'Ida', id: 2 }],
+  ];
   let rejectControl = false;
   let delayMovementResponse = 0;
   let apiOnline = true, wsOnline = true, stamp = Date.now(), nextRecord = 13;
@@ -87,15 +98,35 @@ let browser, activePage;
     } else {
       assert.equal(req.method(),'POST');
       if (rejectControl) return route.fulfill({status:401,headers,contentType:'application/json',body:JSON.stringify({detail:'Clave API inválida.'})});
-      assert.equal(req.headers()['x-api-key'],KEY);
-      if (path.endsWith('/fausto/interpretar')) {
+      const confirm = path.match(/^\/vehiculos\/1\/fausto\/([\w-]{22})\/confirmar$/);
+      if (!confirm) assert.equal(req.headers()['x-api-key'],KEY);
+      if (confirm) {
+        const change = pendingChanges.get(confirm[1]);
+        assert.ok(change, 'La confirmación se refiere a una propuesta de catálogo');
+        if (req.headers()['x-api-key'] !== ADMIN_KEY) {
+          calls.push('fausto:admin-rechazada');
+          status = 403;
+          body = { detail: 'Se requiere clave de administrador.' };
+        } else {
+          calls.push(`fausto:${change.accion}`);
+          pendingChanges.delete(confirm[1]);
+          body = { estado: 'confirmado', mensaje: `Cambio guardado: ${change.nombre}.` };
+        }
+      } else if (path.endsWith('/fausto/interpretar')) {
         const source = req.postDataJSON();
         if (source.audio) {
           assert.equal(source.mime, 'audio/webm');
           assert.ok(Buffer.from(source.audio, 'base64').length > 0);
         }
         calls.push(source.audio ? 'fausto:voz' : 'fausto:texto');
-        body = { plan_id: planId, expires_in: 90, respuesta: 'Avance y giro listos.',
+        if (source.texto === movementPrompt) await pendingInterpretation;
+        const example = examples.findIndex(([text]) => text === source.texto);
+        if (example >= 0) {
+          const [, change] = examples[example];
+          const id = 'catalogo'.padEnd(21, '0') + String(example);
+          pendingChanges.set(id, change);
+          body = { plan_id: id, expires_in: 90, respuesta: 'Revisa el cambio.', pasos: [], cambio_catalogo: change };
+        } else body = { plan_id: planId, expires_in: 90, respuesta: 'Avance y giro listos.',
           transcripcion: source.audio ? 'Avanza y gira a la derecha' : '',
           pasos: [{ comando: 'AVANZAR', duracion_ms: 10000 }, { comando: 'GIRAR_DERECHA', duracion_ms: 500 }] };
       } else if (path.endsWith(`/fausto/${planId}/ejecutar`)) {
@@ -125,8 +156,8 @@ let browser, activePage;
   const page = await context.newPage(); activePage=page;
   page.on('pageerror',error=>errors.push(error.message));
   const closeSheet = async () => { if (await page.locator('#control-sheet').evaluate(el=>el.open)) await page.locator('#sheet-close').click(); };
-  const openPanel = async name => {
-    await closeSheet(); await page.locator(name==='session'?'#access-open':'#demo-open').click();
+  const openDemo = async () => {
+    await closeSheet(); await page.locator('#demo-open').click();
   };
   const view = async name => { await closeSheet(); await page.locator(`nav [data-view-target="${name}"]`).click(); await page.waitForFunction(name=>document.documentElement.dataset.view===name,name); };
   const settle = () => page.waitForTimeout(200);
@@ -143,7 +174,7 @@ let browser, activePage;
     assert.ok(layout.scrollWidth<=layout.width+1,`${name}: sin desbordamiento horizontal ${JSON.stringify(layout)}`);
     {
       assert.ok(layout.scrollHeight<=layout.height+1 && layout.bodyScrollHeight<=layout.height+1,`${name}: documento cabe completo ${JSON.stringify(layout)}`);
-      const selectors = control ? ['#joystick','#box-lever','#stop-button','.control-dock','#access-open','#demo-open','#fausto-open','#fullscreen-button','[data-command-id="7"]','[data-command-id="8"]'] : ['.latest-panel','.history-table','#history-prev','#history-next'];
+      const selectors = control ? ['#joystick','#box-lever','#stop-button','.control-dock','#refresh-button','#demo-open','#fausto-open','#fullscreen-button','[data-command-id="7"]','[data-command-id="8"]'] : ['.latest-panel','.history-table','#history-prev','#history-next'];
       for (const selector of selectors) {
         const element=page.locator(selector), box=await element.boundingBox();
         assert.ok(await element.isVisible(),`${name}: ${selector} visible`);
@@ -170,16 +201,28 @@ let browser, activePage;
     document.querySelector('#vehicle-name + .rb-warp[data-ready]'));
   await page.waitForFunction(() => document.querySelectorAll('.target-cursor__corner').length ===
     (matchMedia('(hover: hover) and (pointer: fine)').matches ? 4 : 0));
-  assert.equal(await page.locator('.rb-flip-surface .flip-card').count(), 8);
+  assert.equal(await page.locator('.rb-flip-surface .flip-card').count(), 3);
+  assert.equal(await page.locator('.control-dock #access-open').count(), 0);
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'silver');
   assert.equal(await page.locator('#api-key').count(),0,'Sin campo de clave');
   assert.equal(await page.locator('#session-status').textContent(),'Disponible');
   assert.equal(await page.locator('#demo-select').inputValue(),'1');
   const area=page.locator('#joystick');
   const box=await area.boundingBox(),x=box.x+box.width/2,y=box.y+box.height/2;
-  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y-70);await settle();
-  await page.mouse.move(x+1,y-71);await page.mouse.move(x+2,y-72);await settle();
+  await page.locator('#demo-open').hover();
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('demo-open')).cursor === 'none');
+  await area.hover();
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('joystick')).cursor === 'grab');
+  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y-70);
+  await page.waitForFunction(() => document.getElementById('action-http').textContent.includes('HTTP 200'));
+  await page.waitForTimeout(450);
+  assert.ok(calls.length >= 2 && calls.every(id => id === 1), 'Joystick sostenido renueva el avance');
+  const beforeTurn = calls.length;
   await page.mouse.move(x-70,y);await settle();await page.mouse.up();await settle();
-  assert.deepEqual(calls,[1,3,9],'Joystick: una orden por transición');
+  assert.deepEqual(calls.slice(beforeTurn),[3,9],'Girar cancela el avance, soltar detiene');
+  const afterRelease = calls.length;
+  await page.waitForTimeout(420);
+  assert.equal(calls.length, afterRelease, 'Soltar cancela renovaciones pendientes');
   assert.equal(await page.locator('#session-status').textContent(),'Disponible');
   await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y-70);await settle();
   await page.mouse.move(x,y);await settle();await page.mouse.move(x,y+70);await settle();await page.mouse.up();await settle();
@@ -209,7 +252,7 @@ let browser, activePage;
     await page.locator(`[data-command-id="${id}"]`).click();
     await page.waitForFunction(id=>document.querySelector(`[data-command-id="${id}"]`)?.dataset.toggle==='off',id);
   }
-  await page.locator('#stop-button').click();await settle();await openPanel('demo');
+  await page.locator('#stop-button').click();await settle();await openDemo();
   await page.selectOption('#demo-select','1');await page.waitForFunction(()=>!document.getElementById('demo-start').disabled);
   const beforeDemoPress = calls.length;
   await demoStart.click();
@@ -240,6 +283,15 @@ let browser, activePage;
   await page.waitForFunction(() => document.querySelector('#monitor-vehicle + .rb-warp[data-ready]') &&
     document.querySelector('#monitor-command + .rb-warp[data-ready]') &&
     document.querySelector('#history-heading + .rb-warp[data-ready]'));
+  assert.equal(await page.locator('#control-view .drive-panel .rb-flip-surface, #monitor-view .rb-flip-surface').count(), 0);
+  for (const card of ['.latest-panel', '.history-panel']) {
+    const foil = page.locator(`${card} .monitor-foil`);
+    assert.equal(await foil.locator('i').count(), 4);
+    await page.locator(card).hover({position: {x:30,y:30}});
+    await page.waitForFunction(selector => Number(getComputedStyle(document.querySelector(selector)).opacity) > 0, `${card} .monitor-foil`);
+    assert.match(await foil.locator('i').first().evaluate(el => getComputedStyle(el).maskImage), /fausto-transparente\.png/);
+    await page.screenshot({ path:join(output, `holograma-${card.slice(1)}.png`) });
+  }
   assert.ok(reads.state>0 && reads.history>0,'Carga inicial REST');
   assert.deepEqual(await recordIds(),history.slice(-10).reverse().map(row=>row.id_historial));
   const writesBeforeMonitor=calls.length, externalEvent=individual(5), newestId=nextRecord-1;
@@ -268,7 +320,7 @@ let browser, activePage;
   await view('control');
   assert.equal(await page.locator('#theme-button img').evaluate(el=>el.complete&&el.naturalWidth>0),true);
   const beforeThemes=calls.length, accents=[];
-  for(const theme of ['forest','violet','eva','rose','red','silver']){
+  for(const theme of ['silver','forest','violet','eva','rose','red']){
     assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
     accents.push(await page.locator('#api-status .status-dot').evaluate(el=>getComputedStyle(el).backgroundColor));
     for(const [size,width,height]of[['desktop',1440,1000],['mobile',390,844]]){
@@ -279,10 +331,6 @@ let browser, activePage;
   }
   assert.equal(new Set(accents).size,6,'Indicadores con seis acentos');
   assert.equal(calls.length,beforeThemes,'Cambiar tema no envía órdenes');
-  await page.setViewportSize({width:1024,height:520});
-  await openPanel('session');
-  assert.equal(await page.locator('#control-sheet').evaluate(el=>el.open),true);
-  await closeSheet();
   for(const[name,width,height]of dimensions){
     await page.setViewportSize({width,height});await view('control');await settle();await assertFits(name);
     await page.screenshot({path:join(output,`${name}.png`),fullPage:true});
@@ -294,7 +342,7 @@ let browser, activePage;
     await page.screenshot({path:join(output,`${name}-monitor.png`),fullPage:true});
   }
   await view('control');await page.setViewportSize({width:390,height:844});await settle();
-  await openPanel('demo');
+  await openDemo();
   assert.equal(await page.locator('#control-sheet').evaluate(el=>el.open),true);
   assert.equal(await page.locator('#demo-select').inputValue(),'1');
   const beforeCancelHold = calls.length;
@@ -304,7 +352,7 @@ let browser, activePage;
   await page.keyboard.up('Space');
   await page.waitForTimeout(980);
   assert.equal(calls.length, beforeCancelHold, 'Escape cancela el inicio sostenido');
-  await openPanel('demo');
+  await openDemo();
   await demoStart.focus();
   await page.keyboard.down('Space');
   await page.waitForFunction(() => document.getElementById('demo-start').dataset.phase === 'done');
@@ -320,7 +368,7 @@ let browser, activePage;
   const cdp=await context.newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
   await page.waitForFunction(() => !document.querySelector('.target-cursor'));
-  await openPanel('demo');
+  await openDemo();
   const beforeTouchHold = calls.length;
   const demoBox = await demoStart.boundingBox();
   await cdp.send('Input.dispatchTouchEvent', {
@@ -340,24 +388,83 @@ let browser, activePage;
   const beforeChat = calls.length;
   await page.locator('#fausto-open').click();
   await page.locator('#fausto-dialog[open]').waitFor();
-  await page.locator('#fausto-input').fill('Oye, avanza 10 segundos y luego gira a la derecha');
-  await page.locator('#fausto-input').press('Enter');
-  await page.locator('#fausto-plan').waitFor();
-  assert.match(await page.locator('#fausto-steps').textContent(), /10 s/);
-  assert.deepEqual(calls.slice(beforeChat), ['fausto:texto']);
-  await page.locator('#fausto-execute').click();
-  await page.waitForFunction(() => document.getElementById('fausto-status').textContent.includes('Recorrido aceptado') ||
-    document.getElementById('fausto-status').textContent.includes('Paso 1'));
-  await page.locator('#fausto-stop').click();
-  await page.waitForFunction(() => document.getElementById('fausto-status').textContent.includes('Detención confirmada'));
+  await page.locator('#fausto-electric[data-ready]').waitFor();
+  const chat = page.locator('#fausto-chat');
+  assert.equal(await chat.evaluate(el => getComputedStyle(el).overflowY), 'auto');
+  const enterInstruction = async text => {
+    await page.locator('#fausto-input').fill(text);
+    await page.locator('#fausto-input').press('Enter');
+  };
+  const reachedMovement = () => page.waitForFunction(() => /Recorrido aceptado|Paso 1/.test(document.getElementById('fausto-status').textContent));
+  const stopChat = async () => {
+    await page.locator('#fausto-stop').click();
+    await page.waitForFunction(() => document.getElementById('fausto-status').textContent.includes('Detención confirmada'));
+  };
+  await enterInstruction(movementPrompt);
+  await page.locator('#fausto-thought-effect[data-ready]').waitFor();
+  assert.match(await page.locator('#fausto-thinking').textContent(), /Interpretando la orden/);
+  assert.ok(!calls.slice(beforeChat).includes('fausto:ejecutar'), 'El recorrido espera la interpretación');
+  allowInterpretation();
+  await reachedMovement();
+  assert.match(await page.locator('#fausto-messages').textContent(), /Avanzar · 10 s/);
+  assert.equal(await page.locator('#fausto-confirmation').isVisible(), false);
+  assert.deepEqual(calls.slice(beforeChat), ['fausto:texto','fausto:ejecutar'], 'El movimiento se interpreta y ejecuta sin confirmación');
+  await stopChat();
   assert.deepEqual(calls.slice(beforeChat), ['fausto:texto','fausto:ejecutar','fausto:cancelar']);
-  await page.locator('#fausto-mic').click();
-  await page.waitForFunction(() => document.getElementById('fausto-mic').getAttribute('aria-pressed') === 'true');
+  const mic = page.locator('#fausto-mic');
+  const micReady = () => page.waitForFunction(() => document.getElementById('fausto-mic').getAttribute('aria-pressed') === 'true');
+  const beforeToggleMic = calls.length;
+  await mic.click();
+  await micReady();
   await page.waitForTimeout(450);
-  await page.locator('#fausto-mic').click();
-  await page.locator('#fausto-plan').waitFor();
-  assert.equal(calls.at(-1), 'fausto:voz');
+  assert.equal(calls.length, beforeToggleMic, 'Tocar una vez mantiene el micrófono grabando');
+  await mic.click();
+  await reachedMovement();
+  assert.deepEqual(calls.slice(beforeToggleMic), ['fausto:voz','fausto:ejecutar']);
+  await stopChat();
+
+  const beforeHoldMic = calls.length;
+  const micBox = await mic.boundingBox();
+  await cdp.send('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[{ x:micBox.x+micBox.width/2, y:micBox.y+micBox.height/2 }] });
+  await micReady();
+  await page.waitForTimeout(450);
+  assert.equal(calls.length, beforeHoldMic, 'Mantener pulsado graba sin enviar hasta soltar');
+  await cdp.send('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] });
+  await reachedMovement();
+  assert.deepEqual(calls.slice(beforeHoldMic), ['fausto:voz','fausto:ejecutar']);
+  await stopChat();
+
+  const confirmation = page.locator('#fausto-confirmation');
+  const adminInput = page.locator('#fausto-admin-key');
+  const confirmButton = page.locator('#fausto-confirm');
+  for (const [instruction, change] of examples) {
+    const beforeChange = calls.length;
+    await enterInstruction(instruction);
+    await confirmation.waitFor();
+    assert.ok((await page.locator('#fausto-change-title').textContent()).includes(change.nombre));
+    assert.deepEqual(calls.slice(beforeChange), ['fausto:texto'], 'Interpretar no modifica el catálogo');
+    assert.equal(await adminInput.getAttribute('type'), 'password');
+    if (change.accion === 'crear_comando') {
+      assert.match(await page.locator('#fausto-change-detail').textContent(),/firmware/);
+      await adminInput.fill(KEY);
+      await confirmButton.click();
+      await page.waitForFunction(() => document.getElementById('fausto-status').textContent.includes('administrador válida'));
+      assert.equal(await confirmation.isVisible(), true);
+      assert.equal(calls.at(-1), 'fausto:admin-rechazada');
+    }
+    await adminInput.fill(ADMIN_KEY);
+    await confirmButton.click();
+    await confirmation.waitFor({state:'hidden'});
+    assert.equal(await adminInput.inputValue(), '');
+    assert.equal(calls.at(-1), `fausto:${change.accion}`);
+  }
+  assert.match(await page.locator('#fausto-messages').textContent(), /Oye, avanza 10 segundos/);
+  assert.ok(!(await page.locator('#fausto-messages').textContent()).includes(ADMIN_KEY));
   await page.screenshot({ path: join(output, 'fausto-dialog.png') });
+  await page.setViewportSize({width:1440,height:1000});
+  await settle();
+  await page.screenshot({ path: join(output, 'fausto-dialog-desktop.png') });
+  await page.setViewportSize({width:390,height:844});
   await page.locator('#fausto-close').click();
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:tx,y:ty}]});
   await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:tx,y:ty-touchBox.width*.28}]});await settle();
@@ -377,17 +484,17 @@ let browser, activePage;
   assert.equal(await page.locator('#session-status').textContent(),'Sin permiso');
   assert.equal(await page.locator('#joystick').getAttribute('aria-disabled'),'true');
   rejectControl=false;const acceptedBeforeRenewal=calls.length;
-  await openPanel('session');await page.locator('#session-reconnect').click();await settle();await closeSheet();
+  await page.locator('#refresh-button').click();await settle();
   assert.equal(await page.locator('#joystick').getAttribute('aria-disabled'),'true');
   assert.equal(calls.length,acceptedBeforeRenewal,'Renovar acceso no envía órdenes');
   await page.locator('#stop-button').click();
   await page.waitForFunction(()=>document.getElementById('joystick').getAttribute('aria-disabled')==='false');
   assert.deepEqual(calls.slice(acceptedBeforeRenewal),[9]);
-  await page.locator('#theme-button').click();assert.equal(await page.locator('html').getAttribute('data-theme'),'violet');
+  await page.locator('#theme-button').click();assert.equal(await page.locator('html').getAttribute('data-theme'),'forest');
   apiOnline=false;wsOnline=false;for(const socket of sockets)socket.close({code:1001,reason:'Prueba desconexión total'});
   await page.locator('#refresh-button').click();await settle();
   assert.match(await page.locator('#api-status').textContent(),/No disponible/);assert.match(await page.locator('#rds-status').textContent(),/Sin verificar/);
-  await page.reload();assert.equal(await page.locator('html').getAttribute('data-theme'),'violet','Paleta persistida');
+  await page.reload();assert.equal(await page.locator('html').getAttribute('data-theme'),'forest','Paleta persistida');
   assert.equal(await page.locator('#extra-controls [data-placeholder="true"]').count(),2);
   assert.equal(await page.locator('#extra-controls button:disabled').count(),2);
   assert.equal(await page.locator('#session-status').textContent(),'Sin conexión');
@@ -416,7 +523,7 @@ let browser, activePage;
   await context.route('**/iot-effects.js', route => route.abort());
   await page.reload();
   await page.waitForFunction(() => !document.getElementById('demo-start').disabled);
-  await openPanel('demo');
+  await openDemo();
   const beforeFallback = calls.length;
   await demoStart.click();
   await settle();
@@ -433,7 +540,8 @@ let browser, activePage;
     checks:['Subruta Pages','Joystick/palanca ratón teclado toque y parada','Luces y sonido','DEMO y cancelación','REST inicial/eventos externos',
       'Historial máximo10, orden, deduplicación y paginación','DEMO no contamina historial','Reconexión recupera datos perdidos',
       'Doce resoluciones sin scroll','Seis paletas','React Bits, movimiento reducido y respaldo sin WebGL','Inicio DEMO al mantener pulsado con ratón, teclado y tacto','Parada única con respuesta a tiempo','401 y recuperación STOP','Sin almacenamiento de claves',
-      'Indicadores independientes','Favicon y créditos','Pantalla completa','Fausto.IA por texto y audio, confirmación y parada'],reads,calls,errors},null,2));
+      'Indicadores independientes','Favicon y créditos','Pantalla completa','Joystick con renovación','Fausto.IA por texto y audio con ejecución automática',
+      'Audio por pulsación breve y sostenida','Cambios de catálogo confirmados con clave de administrador','Cursor y hologramas'],reads,calls,errors},null,2));
 })().catch(async error=>{
   console.error(error);
   if(activePage){console.log(await activePage.locator('body').innerText());await activePage.screenshot({path:join(output,'failure.png'),fullPage:true});}

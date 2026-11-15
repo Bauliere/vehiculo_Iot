@@ -5,6 +5,11 @@
   pointer-events: none;
 }
 
+[data-target-cursor-scope],
+[data-target-cursor-scope] * {
+  cursor: none !important;
+}
+
 .target-cursor__corner {
   position: absolute;
   top: 0;

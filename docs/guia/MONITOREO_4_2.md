@@ -148,16 +148,16 @@ Utiliza `assets/servidor_local.py`: entrega correctamente los módulos JavaScrip
 ## 4. Usar CONTROL
 
 1. Espera **WSS: En línea**, **API: Disponible** y **RDS: Disponible**. Son tres comprobaciones distintas.
-2. La página prepara la sesión de control automáticamente. No hay un campo para introducir claves. Si falla, abre **Ajustes → Reconectar** después de completar la actualización de AWS.
+2. La página prepara la sesión de control automáticamente. Si falla, pulsa **Actualizar** en la barra superior después de completar la actualización de AWS.
 3. Pulsa **DETENER** antes de manejar. En MONITOREO puedes revisar la respuesta HTTP de esa acción.
 4. Usa el joystick para avanzar, retroceder o girar. Al soltarlo se envía DETENER.
 5. Lleva la palanca hacia **Subir** o **Bajar** para accionar la caja. Suéltala para volver al centro y detener.
 6. Usa **Luces** y **Sonido** en la barra inferior. Sus indicadores reflejan la alternancia solicitada y observada mediante WSS durante esta sesión. Al abrir la página se desconoce cómo estaban físicamente. DETENER no cambia estos indicadores.
 7. Abre **DEMO**. La DEMO 1 se selecciona automáticamente cuando existe y tiene pasos. Elige el recorrido y mantén pulsado **Iniciar DEMO** durante unos 0.9 segundos. **Cancelar** o **DETENER** detienen la secuencia. La animación sigue los pasos recibidos por WSS.
 
-En el teléfono, CONTROL cabe en la pantalla sin desplazar la página. Ajustes y DEMO se abren desde sus botones. En PC se conservan los paneles completos. Las confirmaciones de solicitudes y eventos están en MONITOREO. Pulsa el icono junto a CONTROL para cambiar la paleta.
+En el teléfono, CONTROL cabe en la pantalla sin desplazar la página. Abre los recorridos con el botón **DEMO**. En PC se conservan los paneles completos. Las confirmaciones de solicitudes y eventos están en MONITOREO. Pulsa el icono junto a CONTROL para cambiar la paleta.
 
-La sesión temporal se conserva solo en memoria y se renueva automáticamente cuando corresponde. Si falla el acceso, comprueba AWS, usa **Ajustes → Reconectar** y vuelve a confirmar DETENER. Si una parada no se confirma, los movimientos permanecen bloqueados hasta que se confirme.
+La sesión temporal se conserva solo en memoria y se renueva automáticamente cuando corresponde. Si falla el acceso, comprueba AWS, pulsa **Actualizar** en la barra superior y vuelve a confirmar **DETENER**. Los movimientos permanecen bloqueados mientras la parada esté pendiente.
 
 ## 5. Abrir MONITOREO y consultar el historial
 
