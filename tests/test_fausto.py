@@ -127,6 +127,47 @@ class FaustoContractTests(TestCase):
 
 
 class FaustoRunTests(IsolatedAsyncioTestCase):
+    async def test_enabling_and_disabling_prepare_one_toggle_without_a_state_read(self):
+        service = FaustoService(Settings(_env_file=None, gemini_api_key="mock"), Mock())
+        service.gemini.interpret = Mock()
+        for text, command in (
+            ("Enciende las luces", "ALTERNAR_LUCES"),
+            ("¡Oye, Fausto, apágalas!", "ALTERNAR_LUCES"),
+            ("Prende el sonido", "ALTERNAR_SONIDO"),
+            ("Apaga el sonido, por favor.", "ALTERNAR_SONIDO"),
+        ):
+            with self.subTest(text=text):
+                result = await service.interpret(1, FaustoInput(texto=text), "local")
+                self.assertEqual(result["pasos"], [{"comando": command, "duracion_ms": 500}])
+                self.assertIn(result["plan_id"], service.plans)
+                self.assertIn("alternar", result["respuesta"])
+        service.gemini.interpret.assert_not_called()
+        self.assertEqual(service.demos.mock_calls, [])
+
+    async def test_audio_toggle_is_recovered_from_the_transcription(self):
+        service = FaustoService(Settings(_env_file=None, gemini_api_key="mock"), Mock())
+        service.gemini.interpret = Mock(return_value=Interpretation(
+            respuesta="No sé el estado.", transcripcion="Apaga el sonido.", pasos=[],
+        ))
+        result = await service.interpret(1, FaustoInput(audio="YQ==", mime="audio/wav"), "local")
+        self.assertEqual(result["transcripcion"], "Apaga el sonido.")
+        self.assertEqual(result["pasos"], [{"comando": "ALTERNAR_SONIDO", "duracion_ms": 500}])
+        self.assertIn(result["plan_id"], service.plans)
+
+    async def test_pancho_joke_never_prepares_a_plan(self):
+        service = FaustoService(Settings(_env_file=None, gemini_api_key="mock"), Mock())
+        service.gemini.interpret = Mock(return_value=Interpretation(
+            respuesta="Mueve.", transcripcion="Derrota al jefe final Pancho.",
+            pasos=[FaustoStep(comando="AVANZAR", duracion_ms=500)],
+        ))
+        for source in (FaustoInput(texto="¡Mata al Pancho!"), FaustoInput(audio="YQ==", mime="audio/wav")):
+            result = await service.interpret(1, source, "local")
+            self.assertEqual(result["respuesta"], "al toque mi rey")
+            self.assertEqual(result["pasos"], [])
+            self.assertIsNone(result["plan_id"])
+        self.assertEqual(service.plans, {})
+        self.assertEqual(service.demos.mock_calls, [])
+
     async def test_timed_steps_use_existing_protocol_and_can_be_cancelled(self):
         lock = asyncio.Lock()
         manager = SimpleNamespace(publicar=AsyncMock())

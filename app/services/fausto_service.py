@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import re
 import secrets
 import ssl
 import time
@@ -47,9 +48,15 @@ Para un toque, "tantito" o un comando sin tiempo usa 500 ms. Convierte segundos
 a milisegundos enteros. Máximo 6 pasos, 10000 ms por paso y 20000 ms en total.
 Para tiempos mayores, bucles, movimiento indefinido o recorridos por distancia,
 pide reformular sin proponer pasos. DETENER dura 0 ms y solo puede ir al final.
-Luces y sonido solo permiten alternar, con pulso de 500 ms. Si piden explícitamente
-encender o apagar, explica que el carrito no reporta el estado físico y ofrece
-alternar. "Cambia las luces" sí admite ALTERNAR_LUCES.
+Para encender, prender, apagar o cambiar las luces, propone un paso
+ALTERNAR_LUCES de 500 ms. Para encender, prender, apagar o cambiar el sonido,
+propone ALTERNAR_SONIDO de 500 ms. Aplica lo mismo a "enciéndelas" y "apágalas"
+para las luces. Estos pedidos son órdenes de alternar, sin consultar el estado ni
+pedir confirmación. Di que vas a alternar la función, sin prometer cómo quedará.
+Una consulta sobre el estado de las luces o el sonido no lleva pasos.
+"Mata al Pancho" y órdenes similares sobre Pancho, el jefe final ficticio del juego,
+son un chiste. Si el pedido solo es esa broma, responde exactamente "al toque mi rey",
+con pasos=[] y cambio_catalogo=null. Una solicitud de daño real no lleva pasos.
 Describe brevemente lo que entendiste. Los pasos de movimiento se envían después
 de mostrar esa interpretación. Nunca afirmes que el vehículo ya se movió.
 Para una solicitud explícita de crear o eliminar un comando o una DEMO, usa
@@ -238,6 +245,29 @@ def normalized_name(name):
     return " ".join(unaccented.replace("_", " ").split())
 
 
+def fixed_interpretation(text, *, transcripcion=""):
+    """Resuelve órdenes directas sin inferir un estado físico ni mover por la broma."""
+    phrase = normalized_name(text).strip(" .,!¡")
+    phrase = re.sub(r"^(?:oye,? )?(?:fausto,? )?", "", phrase)
+    phrase = re.sub(r",? por favor$", "", phrase)
+    if re.fullmatch(
+        r"(?:(?:mata|elimina|derrota|vence) (?:al |a )?|acaba con (?:el )?)(?:jefe final )?pancho(?: del juego)?",
+        phrase,
+    ):
+        return Interpretation(respuesta="al toque mi rey", transcripcion=transcripcion, pasos=[])
+    if re.fullmatch(r"(?:enciende|prende|apaga|alterna|cambia)(?: las luces|las)", phrase):
+        command, target = "ALTERNAR_LUCES", "las luces"
+    elif re.fullmatch(r"(?:enciende|prende|apaga|alterna|cambia|activa|desactiva|silencia) el (?:sonido|audio)", phrase):
+        command, target = "ALTERNAR_SONIDO", "el sonido"
+    else:
+        return None
+    return Interpretation(
+        respuesta=f"Voy a alternar {target}.",
+        transcripcion=transcripcion,
+        pasos=[FaustoStep(comando=command, duracion_ms=500)],
+    )
+
+
 class FaustoService:
     def __init__(self, settings, demos):
         self.settings = settings
@@ -266,11 +296,15 @@ class FaustoService:
 
     async def interpret(self, vehicle_id, source, client):
         self.take_quota(client)
-        self.in_flight += 1
-        # Conserva el cupo hasta que termina la petición, aunque el navegador se desconecte.
-        job = asyncio.create_task(asyncio.to_thread(self.gemini.interpret, source))
-        job.add_done_callback(self.finish_request)
-        result = await asyncio.shield(job)
+        result = fixed_interpretation(source.texto) if source.texto else None
+        if result is None:
+            self.in_flight += 1
+            # Conserva el cupo hasta que termina la petición, aunque el navegador se desconecte.
+            job = asyncio.create_task(asyncio.to_thread(self.gemini.interpret, source))
+            job.add_done_callback(self.finish_request)
+            result = await asyncio.shield(job)
+            if source.audio and result.transcripcion:
+                result = fixed_interpretation(result.transcripcion, transcripcion=result.transcripcion) or result
         now = time.monotonic()
         self.plans = {key: value for key, value in self.plans.items() if value.expires > now}
         response = result.model_dump()
