@@ -42,9 +42,11 @@ Los indicadores de luces y sonido representan la alternancia solicitada y observ
 
 El icono de pantalla completa abre CONTROL y oculta la navegación. Pulsa el mismo botón o Esc para volver. Cuando el navegador permite pantalla completa, también oculta su propia barra.
 
-**Fausto.IA** está en la barra de funciones. Escribe una instrucción o usa el micrófono. Un toque inicia la grabación y el siguiente la envía. Si mantienes pulsado, se envía al soltar. Si la grabación supera dos minutos o el tamaño que admite la API, se descarta y aparece un aviso.
+**Fausto.IA** está en la barra de funciones. Escribe una instrucción o pulsa el micrófono y habla. Tras detectar voz, envía el mensaje después de 2,5 segundos de silencio. También puedes pulsar de nuevo para enviarlo o mantener pulsado y soltar. El navegador necesita permiso para usar el micrófono. La grabación tiene un límite de dos minutos.
 
 Con «Avanza 10 segundos y luego gira a la derecha», Fausto muestra los pasos interpretados y los ejecuta automáticamente. La ESP recibe el recorrido por WSS. **Detener** cancela el recorrido en curso. Puedes consultar las órdenes recibidas en el Monitor Serie.
+
+Las órdenes «Enciende las luces» y «Apaga el sonido» solicitan un estado. Si se especifica una duración, por ejemplo «Enciende las luces durante 3 segundos», se programa el apagado. Para aplicar el nuevo protocolo en el circuito se necesita actualizar el firmware y la API. El LED de la página representa la orden WSS que recibió el navegador.
 
 Para crear o eliminar comandos y DEMO, revisa la propuesta e introduce la clave de administrador en ese formulario antes de confirmar. Ejemplos: «Crea un comando llamado Prueba con código 10», «Crea una DEMO llamada Patio que avance un segundo y gire a la derecha», «Borra el comando Prueba» o «Borra la DEMO Patio». Los comandos del catálogo requieren una acción reconocida por el firmware para mover el carrito.
 

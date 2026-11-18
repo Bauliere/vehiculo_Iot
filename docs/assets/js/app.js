@@ -262,7 +262,10 @@ class ControlApplication {
     this.wsConnected = status === 'connected';
     const states = { connected: ['online', 'En línea'], connecting: ['connecting', 'Conectando'], reconnecting: ['connecting', 'Reconectando'], disconnected: ['offline', 'Desconectado'] };
     this.view.status('ws-status', ...states[status]);
-    if (wasConnected && !this.wsConnected) this.connectionLost();
+    if (wasConnected && !this.wsConnected) {
+      this.feedback.resetAux();
+      this.connectionLost();
+    }
     if (!this.wsConnected) this.feedback.neutral();
     this.updateControls();
   }

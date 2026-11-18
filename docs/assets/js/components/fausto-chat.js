@@ -12,7 +12,9 @@ function stepLabel(step) {
   const seconds = ms => (ms / 1000).toLocaleString('es-MX');
   const duration = step.duracion_ms ? ` · ${seconds(step.duracion_ms)} s` : '';
   const pause = step.pausa_ms ? ` · pausa de ${seconds(step.pausa_ms)} s` : '';
-  return commandLabel(step.comando) + duration + pause;
+  const action = step.auxiliar && `${step.auxiliar.charAt(0).toUpperCase()}${step.auxiliar.slice(1)}`;
+  const label = action ? `${action} ${commandLabel(step.comando).toLowerCase()}` : commandLabel(step.comando);
+  return label + duration + pause;
 }
 
 export class FaustoChat {
@@ -140,7 +142,7 @@ export class FaustoChat {
   beginMicGesture(event) {
     if (!event.isPrimary || event.button !== 0 || this.voiceGesture || this.query || this.confirming) return;
     const alreadyRecording = Boolean(this.voice.current);
-    this.voiceGesture = { pointer: event.pointerId, start: performance.now(), alreadyRecording };
+    this.voiceGesture = { pointer: event.pointerId, start: event.timeStamp, alreadyRecording };
     this.mic.setPointerCapture(event.pointerId);
     if (!alreadyRecording) void this.record();
   }
@@ -151,7 +153,8 @@ export class FaustoChat {
     this.voiceGesture = null;
     if (cancelled) {
       if (!gesture.alreadyRecording) this.voice.discard();
-    } else if (gesture.alreadyRecording || performance.now() - gesture.start >= HOLD_TO_TALK_MS) {
+    } else if (gesture.alreadyRecording || (this.mic.getAttribute('aria-pressed') === 'true' &&
+      event.timeStamp - gesture.start >= HOLD_TO_TALK_MS)) {
       this.voice.stop();
     }
   }
@@ -159,7 +162,7 @@ export class FaustoChat {
   async record() {
     if (this.busy()) return;
     this.get('send').disabled = true;
-    this.status('Habla. Suelta si mantuviste pulsado o pulsa de nuevo para enviar.');
+    this.status('Habla. Fausto envía la grabación tras 2,5 segundos de silencio. También puedes pulsar para enviar.');
     try {
       const audio = await this.voice.record();
       if (audio && this.dialog.open) await this.interpret(audio);
@@ -186,8 +189,7 @@ export class FaustoChat {
     } catch (error) {
       if (query.signal.aborted) return;
       const explanation = error.status === 404 || error.status === 503 ? 'Fausto.IA aún no está disponible en el servidor.'
-        : error.status === 424 ? 'El proyecto de Google no tiene acceso a Gemini. Revisa el proyecto y su cuota en AI Studio.'
-        : error.status === 502 ? 'Gemini no respondió. Revisa la configuración de AWS o vuelve a intentarlo.' : error.message;
+        : error.message;
       this.status(explanation);
     } finally {
       this.query = null;

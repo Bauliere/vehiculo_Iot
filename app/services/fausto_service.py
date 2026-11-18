@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import logging
 import re
 import secrets
 import ssl
@@ -12,6 +13,7 @@ import unicodedata
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from functools import partial
 from typing import Literal
 from urllib.error import HTTPError, URLError
@@ -27,11 +29,14 @@ from app.models.api import CommandCode, Name80, PositiveId, Text255
 Command = Literal["AVANZAR", "RETROCEDER", "GIRAR_IZQUIERDA", "GIRAR_DERECHA",
                   "SUBIR_CAJA", "BAJAR_CAJA", "ALTERNAR_LUCES", "ALTERNAR_SONIDO", "DETENER"]
 CODES = {name: code for code, name in enumerate(Command.__args__, 1)}
-MAX_AUDIO_BYTES = 768 * 1024
-MAX_BODY_BYTES = MAX_AUDIO_BYTES * 4 // 3 + 2048
+# PCM mono de 16 kHz y 16 bits durante 120 segundos, con margen para la cabecera WAV.
+MAX_AUDIO_BYTES = 4 * 1024 * 1024
+MAX_AUDIO_BASE64 = ((MAX_AUDIO_BYTES + 2) // 3) * 4
+MAX_BODY_BYTES = MAX_AUDIO_BASE64 + 2048
 MAX_STEPS = 6
 PAUSE_MS = 120
 PLAN_TTL_SECONDS = 90
+logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """
 Eres Fausto, asistente en español de un carrito RC llamado Máquina de carga.
@@ -48,11 +53,12 @@ Para un toque, "tantito" o un comando sin tiempo usa 500 ms. Convierte segundos
 a milisegundos enteros. Máximo 6 pasos, 10000 ms por paso y 20000 ms en total.
 Para tiempos mayores, bucles, movimiento indefinido o recorridos por distancia,
 pide reformular sin proponer pasos. DETENER dura 0 ms y solo puede ir al final.
-Para encender, prender, apagar o cambiar las luces, propone un paso
-ALTERNAR_LUCES de 500 ms. Para encender, prender, apagar o cambiar el sonido,
-propone ALTERNAR_SONIDO de 500 ms. Aplica lo mismo a "enciéndelas" y "apágalas"
-para las luces. Estos pedidos son órdenes de alternar, sin consultar el estado ni
-pedir confirmación. Di que vas a alternar la función, sin prometer cómo quedará.
+Para luces usa ALTERNAR_LUCES y para sonido ALTERNAR_SONIDO. En ambos indica el
+campo auxiliar: "encender" para encender, prender o activar, "apagar" para apagar,
+desactivar o silenciar y "alternar" solo si pidieron alternar o cambiar. Aplica lo
+mismo a "enciéndelas" y "apágalas" para las luces. Usa 0 ms para encendido sin tiempo,
+apagar o alternar. Usa 1 a 10000 ms si pidieron encender por un tiempo explícito.
+No pidas el estado previo ni confirmación. Describe la orden sin afirmar cómo quedó.
 Una consulta sobre el estado de las luces o el sonido no lleva pasos.
 "Mata al Pancho" y órdenes similares sobre Pancho, el jefe final ficticio del juego,
 son un chiste. Si el pedido solo es esa broma, responde exactamente "al toque mi rey",
@@ -66,7 +72,8 @@ Acciones admitidas en cambio_catalogo:
 - crear_comando: requiere nombre y codigo entero proporcionados por el usuario;
   descripcion es opcional. No inventes códigos.
 - crear_demo: requiere nombre y puede incluir descripcion y pasos si se indicaron.
-  Pon esos pasos dentro de cambio_catalogo, con las mismas reglas de movimiento.
+  Pon esos pasos dentro de cambio_catalogo. Una DEMO guardada solo admite pulsos,
+  también para ALTERNAR_LUCES y ALTERNAR_SONIDO: 500 ms y sin campo auxiliar.
   Los pasos necesitan comandos activos del vehículo que coincidan con el firmware.
 - eliminar_comando y eliminar_demo: usa nombre literal o id indicado por el usuario,
   exclusivamente uno de los dos. No inventes un identificador ni adivines el nombre.
@@ -81,7 +88,7 @@ Devuelve respuesta breve, transcripcion (vacía para texto), pasos y cambio_cata
 class FaustoInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     texto: str | None = Field(default=None, min_length=1, max_length=500)
-    audio: str | None = Field(default=None, min_length=1, max_length=MAX_AUDIO_BYTES * 4 // 3)
+    audio: str | None = Field(default=None, min_length=1, max_length=MAX_AUDIO_BASE64)
     mime: Literal["audio/webm", "audio/m4a", "audio/ogg", "audio/wav"] | None = None
 
     @model_validator(mode="after")
@@ -102,10 +109,17 @@ class FaustoStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
     comando: Command
     duracion_ms: int = Field(strict=True, ge=0, le=10000)
+    auxiliar: Literal["encender", "apagar", "alternar"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def check_duration(self):
-        if self.comando == "DETENER":
+        if self.auxiliar is not None:
+            valid = self.comando in ("ALTERNAR_LUCES", "ALTERNAR_SONIDO") and (
+                self.auxiliar == "encender" or self.duracion_ms == 0
+            )
+        elif self.comando == "DETENER":
             valid = self.duracion_ms == 0
         elif self.comando.startswith("ALTERNAR_"):
             valid = self.duracion_ms == 500
@@ -144,6 +158,8 @@ class CatalogChange(BaseModel):
                 raise ValueError("Indica un nombre de hasta 60 caracteres y un código entero.")
         elif self.codigo is not None:
             raise ValueError("El código se usa al crear un comando.")
+        if any(step.auxiliar is not None for step in self.pasos):
+            raise ValueError("Una DEMO guardada admite pulsos sin estado independiente.")
         check_sequence(self.pasos)
         return self
 
@@ -168,6 +184,7 @@ class GeminiInterpreter:
         self.settings = settings
 
     def interpret(self, source):
+        modality = "audio" if source.audio else "texto"
         parts = [{"text": source.texto}] if source.texto else [
             {"text": "Interpreta la solicitud hablada en el siguiente audio."},
             {"inlineData": {"mimeType": source.mime, "data": source.audio}},
@@ -177,7 +194,7 @@ class GeminiInterpreter:
             "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {
                 "temperature": 0,
-                "maxOutputTokens": 800,
+                "maxOutputTokens": 1600 if source.audio else 800,
                 "responseMimeType": "application/json",
                 "responseJsonSchema": Interpretation.model_json_schema(),
             },
@@ -190,26 +207,46 @@ class GeminiInterpreter:
         )
         try:
             context = ssl.create_default_context(cafile=certifi.where())
-            with urlopen(request, timeout=12, context=context) as response:
-                candidate = json.load(response)["candidates"][0]
-            if candidate.get("finishReason") != "STOP":
+            with urlopen(request, timeout=24 if source.audio else 12, context=context) as response:
+                result_body = json.load(response)
+            if result_body.get("promptFeedback", {}).get("blockReason"):
+                raise ApiError(422, "Gemini no pudo procesar esa instrucción. Intenta con otra frase.")
+            candidate = result_body["candidates"][0]
+            finish = candidate.get("finishReason")
+            if finish in ("SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
+                raise ApiError(422, "Gemini no pudo procesar esa instrucción. Intenta con otra frase.")
+            if finish == "MAX_TOKENS":
+                raise ApiError(502, "Gemini devolvió una respuesta incompleta. Intenta con una instrucción más corta.")
+            if finish != "STOP":
                 raise ValueError("Respuesta incompleta.")
             content = "".join(p["text"] for p in candidate["content"]["parts"] if not p.get("thought"))
-            return Interpretation.model_validate_json(content)
+            result = Interpretation.model_validate_json(content)
+            if source.audio and not result.transcripcion.strip():
+                return Interpretation(respuesta="No entendí la grabación. Acércate al micrófono y vuelve a hablar.",
+                                      transcripcion="", pasos=[])
+            return result
         except HTTPError as error:
             error.close()
+            logger.warning("Gemini rechazó interpretación de %s (HTTP %s).", modality, error.code)
             if error.code == 429:
                 raise ApiError(429, "Gemini alcanzó su cuota de solicitudes.") from None
             if error.code in (401, 403):
                 raise ApiError(424, "El proyecto de Google no tiene acceso a la generación con Gemini.") from None
-            raise ApiError(502, "Gemini rechazó la solicitud. Revisa la clave y el modelo en AWS.") from None
+            if error.code == 404:
+                raise ApiError(502, "El modelo de Gemini configurado no está disponible.") from None
+            if error.code in (400, 415) and source.audio:
+                raise ApiError(502, "Gemini rechazó la grabación. Vuelve a grabar o envía la instrucción por texto.") from None
+            raise ApiError(502, "Gemini rechazó la solicitud. Intenta nuevamente.") from None
         except URLError as error:
             if isinstance(error.reason, ssl.SSLCertVerificationError):
                 raise ApiError(502, "No se pudo validar el certificado HTTPS de Gemini.") from None
+            if isinstance(error.reason, TimeoutError):
+                raise ApiError(504, "Gemini tardó demasiado en responder. Intenta con una instrucción más corta.") from None
             raise ApiError(502, "No se pudo contactar a Gemini.") from None
         except TimeoutError:
-            raise ApiError(502, "No se pudo contactar a Gemini.") from None
-        except (ValueError, IndexError, KeyError, TypeError):
+            raise ApiError(504, "Gemini tardó demasiado en responder. Intenta con una instrucción más corta.") from None
+        except (AttributeError, ValueError, IndexError, KeyError, TypeError):
+            logger.warning("Gemini devolvió una interpretación de %s vacía o inválida.", modality)
             raise ApiError(502, "Gemini no devolvió una orden válida. Reformula la instrucción.") from None
 
 
@@ -255,16 +292,47 @@ def fixed_interpretation(text, *, transcripcion=""):
         phrase,
     ):
         return Interpretation(respuesta="al toque mi rey", transcripcion=transcripcion, pasos=[])
-    if re.fullmatch(r"(?:enciende|prende|apaga|alterna|cambia)(?: las luces|las)", phrase):
-        command, target = "ALTERNAR_LUCES", "las luces"
-    elif re.fullmatch(r"(?:enciende|prende|apaga|alterna|cambia|activa|desactiva|silencia) el (?:sonido|audio)", phrase):
-        command, target = "ALTERNAR_SONIDO", "el sonido"
-    else:
+    order = re.fullmatch(
+        r"(enciende|prende|activa|apaga|desactiva|silencia|alterna|cambia)"
+        r"( las luces|las| el sonido| el audio)"
+        r"(?: (?:durante|por) (\d{1,5}(?:[.,]\d{1,3})?|medio|media|un|una)"
+        r" (milisegundos?|ms|segundos?|seg|s))?",
+        phrase,
+    )
+    if not order:
         return None
+    verb, target, amount, unit = order.groups()
+    lights = target in ("las", " las luces")
+    if lights and verb == "silencia":
+        return None
+    command, label = ("ALTERNAR_LUCES", "las luces") if lights else ("ALTERNAR_SONIDO", "el sonido")
+    if verb in ("enciende", "prende", "activa"):
+        auxiliary = "encender"
+    elif verb in ("apaga", "desactiva", "silencia"):
+        auxiliary = "apagar"
+    else:
+        auxiliary = "alternar"
+    duration = 0
+    if amount:
+        if auxiliary != "encender":
+            return Interpretation(respuesta="Indica si quieres encender el auxiliar por ese tiempo.",
+                                  transcripcion=transcripcion, pasos=[])
+        if amount in ("medio", "media"):
+            value = Decimal("0.5")
+        elif amount in ("un", "una"):
+            value = Decimal(1)
+        else:
+            value = Decimal(amount.replace(",", "."))
+        milliseconds = value if unit.startswith(("mili", "ms")) else value * 1000
+        if not 1 <= milliseconds <= 10000 or milliseconds != int(milliseconds):
+            return Interpretation(respuesta="Pide una duración entre 1 milisegundo y 10 segundos.",
+                                  transcripcion=transcripcion, pasos=[])
+        duration = int(milliseconds)
+    time_label = f" durante {duration / 1000:g} s" if duration else ""
     return Interpretation(
-        respuesta=f"Voy a alternar {target}.",
+        respuesta=f"Voy a {auxiliary} {label}{time_label}.",
         transcripcion=transcripcion,
-        pasos=[FaustoStep(comando=command, duracion_ms=500)],
+        pasos=[FaustoStep(comando=command, duracion_ms=duration, auxiliar=auxiliary)],
     )
 
 
@@ -433,9 +501,13 @@ class FaustoService:
                 row = available.get(step.comando)
                 if row is None or row["codigo"] != CODES[step.comando]:
                     raise ApiError(409, "El catálogo activo no coincide con el firmware del carrito.")
-                movements.append({
+                movement = {
                     "id_demo_movimiento": order, "id_comando": row["id_comando"], "orden": order,
                     "comando": step.comando, "codigo": row["codigo"],
                     "duracion_ms": max(step.duracion_ms, 1), "pausa_ms": PAUSE_MS,
-                })
+                }
+                if step.auxiliar is not None:
+                    movement.update(auxiliar=step.auxiliar, duracion_auxiliar_ms=step.duracion_ms,
+                                    duracion_ms=step.duracion_ms or 500)
+                movements.append(movement)
             return movements

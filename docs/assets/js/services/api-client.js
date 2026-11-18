@@ -45,7 +45,7 @@ export class ApiClient {
   }
 
   async request(path, { method = 'GET', body, signal, authorized = false, retried = false,
-    timeoutMs = this.timeoutMs, keepalive = false, adminKey } = {}) {
+    timeoutMs = this.timeoutMs, keepalive = false, adminKey, showFaustoError = false } = {}) {
     if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')
         || path.includes('\\') || path.includes('..')) {
       throw new ApiError('La ruta del servicio no es válida.', { code: 'CONFIG' });
@@ -83,11 +83,15 @@ export class ApiClient {
         // Un 401 se rechaza antes de ejecutar la orden. Solo ese caso se reintenta.
         if (response.status === 401 && authorized && this.automaticVehicleId && !retried) {
           await this.connectControl({ force: true });
-          return this.request(path, { method, body, signal, authorized, retried: true, timeoutMs, keepalive });
+          return this.request(path, { method, body, signal, authorized, retried: true, timeoutMs, keepalive, showFaustoError });
         }
         // Solo un JSON de diagnóstico explícito permite atribuir un fallo a RDS.
         const diagnostic = validJson && data !== null && typeof data === 'object'
           && !Array.isArray(data) && typeof data.detail === 'string';
+        if (showFaustoError && diagnostic && data.detail.length <= 240 &&
+            [413, 422, 424, 429, 502, 504].includes(response.status)) {
+          throw new ApiError(data.detail, { status: response.status, code: 'HTTP' });
+        }
         throw httpError(response.status, diagnostic);
       }
       if (response.status !== 204 && !validJson) {
@@ -145,7 +149,8 @@ export class ApiClient {
   }
   interpretFausto(vehicleId, body, signal) {
     return this.request(`${this.vehiclePath(vehicleId)}/fausto/interpretar`, {
-      method: 'POST', authorized: true, body, signal, timeoutMs: 20000,
+      method: 'POST', authorized: true, body, signal,
+      timeoutMs: body.audio ? 35000 : 20000, showFaustoError: true,
     });
   }
   faustoPlan(vehicleId, planId, action) {

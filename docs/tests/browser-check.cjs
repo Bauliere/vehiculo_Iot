@@ -115,8 +115,10 @@ let browser, activePage;
       } else if (path.endsWith('/fausto/interpretar')) {
         const source = req.postDataJSON();
         if (source.audio) {
-          assert.equal(source.mime, 'audio/webm');
-          assert.ok(Buffer.from(source.audio, 'base64').length > 0);
+          const audio = Buffer.from(source.audio, 'base64');
+          assert.equal(source.mime, 'audio/wav');
+          assert.equal(audio.toString('ascii', 0, 4), 'RIFF');
+          assert.equal(audio.toString('ascii', 8, 12), 'WAVE');
         }
         calls.push(source.audio ? 'fausto:voz' : 'fausto:texto');
         if (source.texto === movementPrompt) await pendingInterpretation;
@@ -272,7 +274,8 @@ let browser, activePage;
   broadcast(step(7, 3));
   await page.waitForFunction(()=>document.querySelector('[data-command-id="7"]').dataset.flash==='true');
   await page.waitForFunction(()=>document.querySelector('[data-command-id="7"]').dataset.flash==='false');
-  assert.equal(await page.locator('[data-command-id="7"]').getAttribute('data-toggle'),'on');
+  assert.equal(await page.locator('[data-command-id="7"]').getAttribute('data-toggle'),'off',
+    'Un pulso de una DEMO guardada deja intacto el indicador de encendido persistente');
   assert.equal(calls.length,demoWrites,'Animar DEMO no envía órdenes');
   await page.locator('#demo-cancel').click();await settle();await closeSheet();
   assert.deepEqual(calls.slice(-3),['demo:start','demo:cancel',9]);
@@ -414,6 +417,23 @@ let browser, activePage;
   assert.deepEqual(calls.slice(beforeChat), ['fausto:texto','fausto:ejecutar','fausto:cancelar']);
   const mic = page.locator('#fausto-mic');
   const micReady = () => page.waitForFunction(() => document.getElementById('fausto-mic').getAttribute('aria-pressed') === 'true');
+  await page.evaluate(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const audio = new AudioContext();
+      await audio.resume();
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      const destination = audio.createMediaStreamDestination();
+      gain.gain.value = 0.18;
+      oscillator.connect(gain).connect(destination);
+      oscillator.start();
+      if (window.silenceAfterFirstPhrase) gain.gain.setValueAtTime(0, audio.currentTime + 0.6);
+      const track = destination.stream.getAudioTracks()[0];
+      const stop = track.stop.bind(track);
+      track.stop = () => { stop(); void audio.close(); };
+      return destination.stream;
+    };
+  });
   const beforeToggleMic = calls.length;
   await mic.click();
   await micReady();
@@ -429,10 +449,20 @@ let browser, activePage;
   await cdp.send('Input.dispatchTouchEvent', { type:'touchStart', touchPoints:[{ x:micBox.x+micBox.width/2, y:micBox.y+micBox.height/2 }] });
   await micReady();
   await page.waitForTimeout(450);
-  assert.equal(calls.length, beforeHoldMic, 'Mantener pulsado graba sin enviar hasta soltar');
+  assert.equal(calls.length, beforeHoldMic, 'Durante una pulsación y con voz no hay envío antes de soltar');
   await cdp.send('Input.dispatchTouchEvent', { type:'touchEnd', touchPoints:[] });
   await reachedMovement();
   assert.deepEqual(calls.slice(beforeHoldMic), ['fausto:voz','fausto:ejecutar']);
+  await stopChat();
+
+  await page.evaluate(() => { window.silenceAfterFirstPhrase = true; });
+  const beforeAutomaticMic = calls.length;
+  await mic.click();
+  await micReady();
+  await page.waitForTimeout(1800);
+  assert.equal(calls.length, beforeAutomaticMic, 'Una pausa corta mantiene el micrófono activo');
+  await reachedMovement();
+  assert.deepEqual(calls.slice(beforeAutomaticMic), ['fausto:voz','fausto:ejecutar']);
   await stopChat();
 
   const confirmation = page.locator('#fausto-confirmation');

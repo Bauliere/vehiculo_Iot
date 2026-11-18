@@ -4,6 +4,8 @@ Aplicación web para controlar y monitorear un vehículo a distancia. CONTROL in
 
 [GitHub Pages](https://bauliere.github.io/vehiculo_Iot/) · [Swagger UI](https://vehiculo-iot.34-225-114-88.sslip.io/docs) · [Guía de instalación y pruebas](docs/guia/MONITOREO_4_2.md)
 
+[Actividad 4.3 · Inventario y propuesta de Administración](docs/guia/ACTIVIDAD_4_3.md)
+
 ## Abrir en local
 
 Desde la raíz del repositorio, con Python instalado:

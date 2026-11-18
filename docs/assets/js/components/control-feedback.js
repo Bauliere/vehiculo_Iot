@@ -10,6 +10,7 @@ export class ControlFeedback {
     this.lastTime = -Infinity;
     this.timer = null;
     this.flashes = new Map();
+    this.auxTimers = new Map();
   }
 
   handleEvent(payload) {
@@ -20,13 +21,14 @@ export class ControlFeedback {
     this.lastTime = event.order;
     if (event.type === 'estado_inicial') return;
     if (['demo_fin', 'demo_cancelada', 'demo_error'].includes(event.type)) this.neutral();
+    if (['demo_cancelada', 'demo_error'].includes(event.type)) this.resetAux();
     if (!['movimiento_individual', 'demo_movimiento'].includes(event.type)) return;
     const command = event.state?.command;
     if (Object.hasOwn(this.aux, command)) {
-      // Indicador solicitado en esta sesión. El protocolo no incluye sensor de encendido.
-      this.aux[command] = !this.aux[command];
-      this.known.add(command);
-      this.renderAux();
+      const action = event.type === 'movimiento_individual' ? 'alternar' : payload.auxiliar;
+      if (['encender', 'apagar', 'alternar'].includes(action)) {
+        this.updateAux(command, action, payload.duracion_auxiliar_ms);
+      }
       const button = this.document.querySelector(`[data-aux="${command}"]`);
       if (button) {
         button.dataset.flash = 'true';
@@ -53,6 +55,21 @@ export class ControlFeedback {
     this.timer = setTimeout(() => this.neutral(), duration);
   }
 
+  updateAux(command, action, duration) {
+    clearTimeout(this.auxTimers.get(command));
+    this.auxTimers.delete(command);
+    this.aux[command] = action === 'alternar' ? !this.aux[command] : action === 'encender';
+    this.known.add(command);
+    this.renderAux();
+    if (this.aux[command] && Number.isInteger(duration) && duration > 0 && duration <= 10000) {
+      this.auxTimers.set(command, setTimeout(() => {
+        this.auxTimers.delete(command);
+        this.aux[command] = false;
+        this.renderAux();
+      }, duration));
+    }
+  }
+
   renderAux() {
     for (const [name, active] of Object.entries(this.aux)) {
       const button = this.document.querySelector(`[data-aux="${name}"]`);
@@ -72,5 +89,18 @@ export class ControlFeedback {
     for (const id of ['joystick', 'box-lever']) this.document.getElementById(id).dataset.demoActive = 'false';
   }
 
-  stop() { this.neutral(); for (const timer of this.flashes.values()) clearTimeout(timer); }
+  resetAux() {
+    for (const timer of this.auxTimers.values()) clearTimeout(timer);
+    this.auxTimers.clear();
+    for (const name of Object.keys(this.aux)) this.aux[name] = false;
+    this.known.clear();
+    this.renderAux();
+  }
+
+  stop() {
+    this.neutral();
+    for (const timer of this.flashes.values()) clearTimeout(timer);
+    this.flashes.clear();
+    this.resetAux();
+  }
 }

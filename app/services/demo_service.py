@@ -78,11 +78,13 @@ class DemoService:
                     state = await run_db(self.control.demo_step, id_vehiculo, movement["id_comando"])
                     if run.cancel_event.is_set():
                         break
+                    auxiliary = {key: movement[key] for key in ("auxiliar", "duracion_auxiliar_ms") if key in movement}
                     await manager.publicar(id_vehiculo, event(
                         "demo_movimiento", id_vehiculo, movement["comando"], movement["codigo"],
                         id_demo=run.id_demo, id_demo_movimiento=movement["id_demo_movimiento"],
                         id_comando=movement["id_comando"], orden=movement["orden"],
-                        duracion_ms=movement["duracion_ms"], pausa_ms=movement["pausa_ms"], estado=state, **source,
+                        duracion_ms=movement["duracion_ms"], pausa_ms=movement["pausa_ms"], estado=state,
+                        **source, **auxiliary,
                     ))
                 try:
                     await asyncio.wait_for(run.cancel_event.wait(),

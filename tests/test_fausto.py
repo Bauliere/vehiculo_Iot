@@ -127,31 +127,31 @@ class FaustoContractTests(TestCase):
 
 
 class FaustoRunTests(IsolatedAsyncioTestCase):
-    async def test_enabling_and_disabling_prepare_one_toggle_without_a_state_read(self):
+    async def test_enabling_and_disabling_prepare_absolute_orders_without_a_state_read(self):
         service = FaustoService(Settings(_env_file=None, gemini_api_key="mock"), Mock())
         service.gemini.interpret = Mock()
-        for text, command in (
-            ("Enciende las luces", "ALTERNAR_LUCES"),
-            ("¡Oye, Fausto, apágalas!", "ALTERNAR_LUCES"),
-            ("Prende el sonido", "ALTERNAR_SONIDO"),
-            ("Apaga el sonido, por favor.", "ALTERNAR_SONIDO"),
+        for text, command, auxiliary in (
+            ("Enciende las luces", "ALTERNAR_LUCES", "encender"),
+            ("¡Oye, Fausto, apágalas!", "ALTERNAR_LUCES", "apagar"),
+            ("Prende el sonido", "ALTERNAR_SONIDO", "encender"),
+            ("Apaga el sonido, por favor.", "ALTERNAR_SONIDO", "apagar"),
         ):
             with self.subTest(text=text):
                 result = await service.interpret(1, FaustoInput(texto=text), "local")
-                self.assertEqual(result["pasos"], [{"comando": command, "duracion_ms": 500}])
+                self.assertEqual(result["pasos"], [{"comando": command, "duracion_ms": 0, "auxiliar": auxiliary}])
                 self.assertIn(result["plan_id"], service.plans)
-                self.assertIn("alternar", result["respuesta"])
+                self.assertIn(auxiliary, result["respuesta"])
         service.gemini.interpret.assert_not_called()
         self.assertEqual(service.demos.mock_calls, [])
 
-    async def test_audio_toggle_is_recovered_from_the_transcription(self):
+    async def test_audio_auxiliary_order_is_recovered_from_the_transcription(self):
         service = FaustoService(Settings(_env_file=None, gemini_api_key="mock"), Mock())
         service.gemini.interpret = Mock(return_value=Interpretation(
             respuesta="No sé el estado.", transcripcion="Apaga el sonido.", pasos=[],
         ))
         result = await service.interpret(1, FaustoInput(audio="YQ==", mime="audio/wav"), "local")
         self.assertEqual(result["transcripcion"], "Apaga el sonido.")
-        self.assertEqual(result["pasos"], [{"comando": "ALTERNAR_SONIDO", "duracion_ms": 500}])
+        self.assertEqual(result["pasos"], [{"comando": "ALTERNAR_SONIDO", "duracion_ms": 0, "auxiliar": "apagar"}])
         self.assertIn(result["plan_id"], service.plans)
 
     async def test_pancho_joke_never_prepares_a_plan(self):
