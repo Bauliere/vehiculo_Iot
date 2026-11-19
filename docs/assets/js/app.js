@@ -117,8 +117,6 @@ class ControlApplication {
     this.fausto.start();
     this.startEffects();
     this.historyResize.observe(this.view.get('monitor-history-body').closest('.history-table-wrap'));
-    this.view.get('monitor-refresh').hidden = true;
-    this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor?.refresh());
     this.view.text('developer-credit', `Desarrollado por ${CONFIG.author} · ${CONFIG.year}`);
     this.view.text('academic-credit', `${CONFIG.subject} · Profesor: ${CONFIG.teacher}`);
     const url = this.view.get('api-url');
@@ -226,6 +224,7 @@ class ControlApplication {
     this.demoGeneration += 1;
     this.api.channelId = '';
     this.ready = false;
+    this.catalogFailed = false;
     this.deviceConnected = false;
     this.wsConnected = false;
     this.view.get('commands-dialog').close();
@@ -242,7 +241,7 @@ class ControlApplication {
     this.monitor = new MonitorController(this.api, id, {
       onChange: value => {
         this.monitorView.render(value);
-        this.view.get('monitor-refresh').hidden = value.stateStatus !== 'error' && value.historyStatus !== 'error';
+        this.connectionActions();
       },
     });
     const control = new ControlController(this.api, id, this.catalog, this.state, {
@@ -410,14 +409,16 @@ class ControlApplication {
     if (this.mode === 'legacy') void this.connectSession(true);
     this.socket?.retry();
     if (this.vehicleId) {
-      if (!this.ready) void this.loadCatalog();
+      if (!this.ready || this.catalogFailed) void this.loadCatalog();
       if (this.navigation.currentView === 'monitor') void this.monitor.refresh();
     } else if (this.account) void this.fetchUnits();
     else if (!this.showroom.session) void this.showroom.load();
   }
 
   connectionActions() {
-    const failed = this.mode === 'offline' || (this.mode !== 'pending' && !this.apiAvailable)
+    const monitorFailure = this.vehicleId && this.navigation.currentView === 'monitor' &&
+      [this.monitor?.value.stateStatus, this.monitor?.value.historyStatus].includes('error');
+    const failed = this.mode === 'offline' || (this.mode !== 'pending' && !this.apiAvailable) || this.catalogFailed || monitorFailure
       || (this.vehicleId && (!this.wsConnected || Boolean(this.sessionNotice) || Boolean(this.state?.value.authError)));
     this.view.get('connection-actions').hidden = !failed;
   }
@@ -493,13 +494,17 @@ class ControlApplication {
       const previousDemo = Number(this.view.get('demo-select').value);
       this.view.demos(this.demos);
       this.ready = true;
+      this.catalogFailed = false;
       const nextDemo = this.demos.some(demo => demo.id_demo === previousDemo) ? previousDemo
         : this.demos.some(demo => demo.id_demo === 1) ? 1 : this.demos[0]?.id_demo;
       this.view.get('demo-select').value = nextDemo ? String(nextDemo) : '';
       void this.selectDemo();
       this.state.update({ message: 'Vehículo listo.', tone: 'neutral', authError: null });
     } catch (error) {
-      if (!job.signal.aborted) this.state.update({ message: error.message, tone: 'error' });
+      if (!job.signal.aborted) {
+        this.catalogFailed = true;
+        this.state.update({ message: error.message, tone: 'error' });
+      }
     } finally {
       if (this.catalogRead === job) {
         this.catalogRead = null;
@@ -567,7 +572,7 @@ class ControlApplication {
     this.view.status('api-status', status.api, apiLabels[status.api]);
     this.view.status('rds-status', status.rds, rdsLabels[status.rds]);
     if (wasAvailable && !this.apiAvailable) this.connectionLost();
-    if (this.apiAvailable && this.vehicleId && !this.ready) void this.loadCatalog();
+    if (this.apiAvailable && this.vehicleId && (!this.ready || this.catalogFailed)) void this.loadCatalog();
     if (this.apiAvailable && !wasAvailable) {
       if (this.mode === 'legacy' && !this.api.hasKey()) void this.connectSession();
       else if (this.mode === 'offline') void this.detectMode();
@@ -592,7 +597,7 @@ class ControlApplication {
     this.lever?.setEnabled((enabled || crossingNeutral) && boxCommands);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
       hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain });
-    const notice = uncertain ? 'Detención sin confirmar · revisa Monitoreo'
+    const notice = uncertain ? (authError ? 'Detención sin confirmar · acceso rechazado' : 'Detención sin confirmar · revisa Monitoreo')
       : authError ? 'Sin permiso para operar' : this.sessionNotice ? this.sessionNotice
         : phase === 'stopping' ? 'Deteniendo…'
           : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
