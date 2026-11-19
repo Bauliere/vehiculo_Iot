@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 
 
 TAGS = [
+    {"name": "Plataforma 4.3", "description": "Cuentas, modelos y unidades, asignaciones, demostraciones, auditoría y reservas de exhibición. Las listas usan limit y offset."},
     {"name": "Diagnóstico", "description": "Empieza aquí: comprueba el servidor y después la conexión con RDS. Estas consultas no modifican datos."},
     {"name": "Estado", "description": "Envía un movimiento individual con POST y consulta el último estado con GET. Conecta el monitor antes para ver el aviso en vivo."},
     {"name": "Historial", "description": "Consulta hasta diez movimientos individuales recientes. Las DEMO actualizan el estado sin agregar historial."},
@@ -17,13 +18,14 @@ TAGS = [
     {"name": "Comandos", "description": "Catálogo de acciones disponibles, como AVANZAR o DETENER. Crea un comando solo si falta esa acción. Los pasos DEMO reutilizan su id_comando; crear la acción no mueve el vehículo."},
 ]
 
-DESCRIPTION = """25 operaciones HTTP que integran los 21 procedimientos existentes de **vehiculo_iot**.
+DESCRIPTION = """La plataforma conserva los 21 procedimientos de **vehiculo_iot**.
 
 **GET consulta · POST ejecuta o modifica · WebSocket comunica cambios en vivo.**
 
 En la demostración actual se usa vehículo **1**, comando **1 AVANZAR**, comando **9 DETENER** y DEMO **1**.
-Confirma los IDs con GET antes de usar otros registros. Los campos numéricos requieren enteros;
-`activo` y `conectado` usan **0 o 1**. Los nombres y descripciones son texto.
+Confirma los IDs con GET antes de usar otros registros. En modalidad 4.3, inicia sesión con
+`POST /plataforma/sesion` y usa el token Bearer en **Authorize**. Las órdenes usan también el
+`X-IoT-Channel` emitido a esa sesión por WSS. Envía modelos, unidades, asignaciones y demos a `/plataforma`.
 
 Las respuestas confirman el estado guardado y los eventos enviados. La conexión física con el carrito es una etapa posterior.
 """
@@ -176,7 +178,8 @@ GUIDE = """
     </section>
   </div>
   <nav class="iot-quick" aria-label="Operaciones frecuentes">__LINKS__</nav>
-  <details class="iot-demo-guide">
+  __COMMERCIAL_GUIDE__
+  <details class="iot-demo-guide" __LEGACY_VISIBILITY__>
     <summary>Comando, DEMO y paso: cómo crear tu recorrido</summary>
     <div class="iot-concepts">
       <div><strong>Comando = acción disponible</strong><p>Por ejemplo, AVANZAR. Tiene nombre y código. Se crea una vez en el catálogo del vehículo y puede reutilizarse.</p></div>
@@ -209,6 +212,7 @@ GUIDE = """
     </div>
     <label for="iot-ws-url">Dirección WebSocket para este servidor</label>
     <input id="iot-ws-url" readonly>
+    __WSS_CREDENTIAL__
     <pre id="iot-events" aria-label="Eventos recibidos">Aquí aparecerán los eventos. Este monitor observa; envía las órdenes desde las operaciones POST.</pre>
   </details>
   <div class="iot-help"><p><strong>Respuestas:</strong> 200 consulta o acción completada · 201 registro creado · 202 DEMO aceptada · 401 revisa la clave · 404 revisa los IDs · 409 conflicto, como una DEMO activa · 422 revisa los campos señalados.</p>
@@ -237,6 +241,8 @@ MONITOR_SCRIPT = r"""
   const address = document.getElementById('iot-ws-url');
   const status = document.getElementById('iot-status');
   const events = document.getElementById('iot-events');
+  const credential = document.getElementById('iot-ws-token');
+  const channel = document.getElementById('iot-ws-channel');
   const prefix = location.pathname.replace(/\/docs\/?$/, '');
   let socket = null;
   let lines = [];
@@ -256,6 +262,7 @@ MONITOR_SCRIPT = r"""
     vehicle.disabled = false;
     connect.disabled = false;
     disconnect.disabled = true;
+    if (channel) channel.value = '';
   }
   vehicle.addEventListener('input', () => { address.value = url(); });
   address.value = url();
@@ -269,11 +276,20 @@ MONITOR_SCRIPT = r"""
     status.textContent = 'Conectando…';
     lines = [];
     events.textContent = 'Esperando el estado inicial…';
-    try { socket = new WebSocket(target); }
+    const token = credential?.value.trim();
+    if (credential && !token) { ready(); status.textContent = 'Pega el token de tu sesión.'; return; }
+    if (credential) credential.value = '';
+    try { socket = new WebSocket(target, token ? ['iot.v1', 'auth.' + token] : undefined); }
     catch (_) { ready(); status.textContent = 'No se pudo abrir la conexión.'; return; }
     socket.addEventListener('open', () => { status.textContent = 'Conectado · observando'; });
     socket.addEventListener('message', message => {
-      try { log(JSON.stringify(JSON.parse(message.data), null, 2)); }
+      try {
+        const event = JSON.parse(message.data);
+        if (event.tipo === 'canal_control' && channel) {
+          channel.value = event.canal;
+          log('Canal de operación disponible para esta pestaña.');
+        } else log(JSON.stringify(event, null, 2));
+      }
       catch (_) { log(String(message.data)); }
     });
     socket.addEventListener('error', () => {
@@ -295,7 +311,7 @@ MONITOR_SCRIPT = r"""
 """
 
 
-def swagger_documentation(schema: dict, openapi_url: str, root_path: str = "") -> HTMLResponse:
+def swagger_documentation(schema: dict, openapi_url: str, root_path: str = "", *, commercial=False) -> HTMLResponse:
     page = get_swagger_ui_html(
         openapi_url=openapi_url,
         title="Vehículo IoT · Guía y pruebas",
@@ -308,6 +324,8 @@ def swagger_documentation(schema: dict, openapi_url: str, root_path: str = "") -
         ("GET · Historial", "/vehiculos/{id_vehiculo}/historial", "get"),
         ("POST · Iniciar DEMO", "/vehiculos/{id_vehiculo}/demos/{id_demo}/iniciar", "post"),
     ]
+    if commercial:
+        shortcuts[:0] = [("POST · Sesión", "/plataforma/sesion", "post"), ("GET · Administración", "/plataforma/dashboard", "get")]
     def operation_link(title, path, method):
         operation = schema["paths"][path][method]
         tag = quote(operation["tags"][0], safe="")
@@ -315,6 +333,16 @@ def swagger_documentation(schema: dict, openapi_url: str, root_path: str = "") -
         return f'<a href="#/{tag}/{operation_id}" data-tag="{escape(operation["tags"][0], quote=True)}" data-operation="{escape(operation["operationId"], quote=True)}">{escape(title)}</a>'
 
     guide = GUIDE.replace("__ROOT__", escape(root_path, quote=True))
+    guide = guide.replace("__LEGACY_VISIBILITY__", "hidden" if commercial else "")
+    guide = guide.replace("__COMMERCIAL_GUIDE__", """<section class="iot-help">
+        <p>Usa <code>POST /plataforma/sesion</code> para iniciar sesión. En <strong>Authorize</strong> pega el token de cuenta
+        en el campo Bearer. Para operar, conecta el monitor con ese mismo token y copia <code>X-IoT-Channel</code>.</p>
+        <p>El comprador elige una unidad de <code>GET /plataforma/mis-unidades</code>. La empresa gestiona las unidades
+        mediante el grupo Plataforma 4.3. El comprador puede autorizar soporte para su unidad durante quince minutos.</p></section>"""
+        if commercial else "")
+    guide = guide.replace("__WSS_CREDENTIAL__", """<div class="iot-controls">
+        <label for="iot-ws-token">Token de cuenta</label><input id="iot-ws-token" type="password" autocomplete="off">
+        <label for="iot-ws-channel">X-IoT-Channel</label><input id="iot-ws-channel" readonly></div>""" if commercial else "")
     guide = guide.replace("__LINKS__", "".join(operation_link(*shortcut) for shortcut in shortcuts))
     tutorial_links = {
         "__CATALOG_LINK__": ("Consulta los comandos", "/vehiculos/{id_vehiculo}/comandos", "get"),

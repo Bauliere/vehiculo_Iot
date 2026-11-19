@@ -14,6 +14,10 @@ key_header = APIKeyHeader(
     description="Pega solo el valor de API_ADMIN_KEY del .env de AWS para todas las escrituras. API_CONTROL_KEY permite movimientos y DEMO. No incluyas el nombre, el signo igual ni comillas. La autorización de Postman se configura por separado.",
 )
 
+TRUSTED_ORIGINS = (
+    "https://bauliere.github.io", "http://127.0.0.1:5500", "http://localhost:5500",
+)
+
 PUBLIC_CONTROL_TTL = 15 * 60
 _TOKEN_PREFIX = "v1"
 _CONTROL_PATH = re.compile(
@@ -118,8 +122,14 @@ def authorize(request: Request, supplied: str | None, admin_only: bool):
 
 
 def require_admin(request: Request, key: str | None = Depends(key_header)):
+    if request.app.state.runtime.settings.commercial_enabled:
+        raise HTTPException(403, "Usa los endpoints de Administración para modificar el inventario y las demostraciones.")
     authorize(request, key, True)
 
 
 def require_control(request: Request, key: str | None = Depends(key_header)):
+    if request.app.state.runtime.settings.commercial_enabled:
+        if getattr(request.state, "commercial_actor", None) is None:
+            raise HTTPException(401, "Inicia sesión para operar esta unidad.")
+        return
     authorize(request, key, False)

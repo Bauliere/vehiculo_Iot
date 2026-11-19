@@ -16,6 +16,7 @@ def event(tipo: str, id_vehiculo: int, comando=None, codigo=None, **data):
 
 @dataclass
 class _Connection:
+    vehicle_id: int
     queue: asyncio.Queue
     task: asyncio.Task | None = None
 
@@ -35,10 +36,14 @@ class WebSocketManager:
         task.add_done_callback(self._tasks.discard)
         return task
 
-    async def conectar(self, id_vehiculo, websocket):
-        await websocket.accept()
-        self.clientes[id_vehiculo].add(websocket)
-        connection = _Connection(asyncio.Queue(maxsize=self._max_pending))
+    async def conectar(self, id_vehiculo, websocket, *, subprotocol=None, receive_events=True):
+        if subprotocol:
+            await websocket.accept(subprotocol=subprotocol)
+        else:
+            await websocket.accept()
+        if receive_events:
+            self.clientes[id_vehiculo].add(websocket)
+        connection = _Connection(id_vehiculo, asyncio.Queue(maxsize=self._max_pending))
         self._connections[websocket] = connection
         connection.task = self._track(self._send_loop(id_vehiculo, websocket, connection))
 
@@ -53,7 +58,7 @@ class WebSocketManager:
             connection.task.cancel()
 
     @staticmethod
-    async def _close(websocket, code):
+    async def close_socket(websocket, code):
         try:
             await asyncio.wait_for(websocket.close(code=code), timeout=1)
         except Exception:
@@ -71,7 +76,7 @@ class WebSocketManager:
             raise
         except Exception:
             self.desconectar(id_vehiculo, websocket)
-            await self._close(websocket, 1011)
+            await self.close_socket(websocket, 1011)
         finally:
             while not connection.queue.empty():
                 connection.queue.get_nowait()
@@ -86,7 +91,11 @@ class WebSocketManager:
         except asyncio.QueueFull:
             # Se desconecta el receptor atrasado; no se omiten eventos a escondidas.
             self.desconectar(id_vehiculo, websocket)
-            self._track(self._close(websocket, 1013))
+            self._track(self.close_socket(websocket, 1013))
+
+    def cerrar(self, id_vehiculo, websocket, code):
+        self.desconectar(id_vehiculo, websocket)
+        self._track(self.close_socket(websocket, code))
 
     async def enviar(self, id_vehiculo, websocket, mensaje):
         self._enqueue(id_vehiculo, websocket, jsonable_encoder(mensaje))
@@ -97,8 +106,6 @@ class WebSocketManager:
             self._enqueue(id_vehiculo, client, message)
 
     async def shutdown(self):
-        for vehicle, clients in tuple(self.clientes.items()):
-            for client in tuple(clients):
-                self.desconectar(vehicle, client)
-                self._track(self._close(client, 1001))
+        for client, connection in tuple(self._connections.items()):
+            self.cerrar(connection.vehicle_id, client, 1001)
         await asyncio.gather(*tuple(self._tasks), return_exceptions=True)

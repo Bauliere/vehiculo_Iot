@@ -14,7 +14,6 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from functools import partial
 from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -256,6 +255,7 @@ class FaustoPlan:
     steps: list[FaustoStep]
     expires: float
     demo_id: int
+    scope: bytes | None = None
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     started: bool = False
 
@@ -362,7 +362,7 @@ class FaustoService:
         self.calls.append((now, client))
         self.used += 1
 
-    async def interpret(self, vehicle_id, source, client):
+    async def interpret(self, vehicle_id, source, client, *, scope=None):
         self.take_quota(client)
         result = fixed_interpretation(source.texto) if source.texto else None
         if result is None:
@@ -378,6 +378,8 @@ class FaustoService:
         response = result.model_dump()
         response.update(plan_id=None, expires_in=0)
         if result.cambio_catalogo is not None:
+            if scope is not None:
+                raise ApiError(422, "Edita el catálogo y los recorridos desde Administración.")
             change = await run_db(self.preview_catalog_change, vehicle_id, result.cambio_catalogo)
             key = secrets.token_urlsafe(16)
             self.plans[key] = CatalogPlan(vehicle_id, change, time.monotonic() + PLAN_TTL_SECONDS)
@@ -385,7 +387,7 @@ class FaustoService:
         elif result.pasos and not (len(result.pasos) == 1 and result.pasos[0].comando == "DETENER"):
             key = secrets.token_urlsafe(16)
             demo_id = 1_500_000_000 + secrets.randbelow(600_000_000)
-            self.plans[key] = FaustoPlan(vehicle_id, result.pasos, now + PLAN_TTL_SECONDS, demo_id)
+            self.plans[key] = FaustoPlan(vehicle_id, result.pasos, now + PLAN_TTL_SECONDS, demo_id, scope=scope)
             response.update(plan_id=key, expires_in=PLAN_TTL_SECONDS)
         return response
 
@@ -394,27 +396,31 @@ class FaustoService:
         if not job.cancelled():
             job.exception()
 
-    def get_plan(self, vehicle_id, plan_id):
+    def get_plan(self, vehicle_id, plan_id, scope=None):
         plan = self.plans.get(plan_id)
-        if not plan or plan.vehicle_id != vehicle_id or plan.expires <= time.monotonic():
+        if (not plan or plan.vehicle_id != vehicle_id or plan.expires <= time.monotonic()
+                or getattr(plan, "scope", None) != scope):
             raise ApiError(404, "El plan expiró. Envía la instrucción de nuevo.")
         return plan
 
-    async def execute(self, vehicle_id, plan_id):
-        plan = self.get_plan(vehicle_id, plan_id)
+    async def execute(self, vehicle_id, plan_id, *, scope=None, validate=None):
+        plan = self.get_plan(vehicle_id, plan_id, scope)
         if isinstance(plan, CatalogPlan):
             raise ApiError(409, "Este cambio de catálogo requiere confirmación de administrador.")
         if plan.started or plan.cancel_event.is_set():
             raise ApiError(409, "El plan ya se envió o fue cancelado.")
         plan.started = True
         plan.expires = time.monotonic() + PLAN_TTL_SECONDS
+        def prepare(vid, did):
+            steps = self.prepare(plan.steps, vid, did)
+            return validate(steps) if validate else steps
         return await self.demos.start(
-            vehicle_id, plan.demo_id, prepare=partial(self.prepare, plan.steps),
+            vehicle_id, plan.demo_id, prepare=prepare,
             fausto_id=plan_id, cancel_event=plan.cancel_event,
         )
 
-    async def cancel(self, vehicle_id, plan_id):
-        plan = self.get_plan(vehicle_id, plan_id)
+    async def cancel(self, vehicle_id, plan_id, *, scope=None):
+        plan = self.get_plan(vehicle_id, plan_id, scope)
         if isinstance(plan, CatalogPlan):
             if plan.confirmation is not None:
                 raise ApiError(409, "La confirmación del cambio ya se envió.")

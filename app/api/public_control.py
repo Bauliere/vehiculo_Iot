@@ -4,7 +4,7 @@ No es un inicio de sesión: cualquier visitante puede obtener permiso de conduci
 el vehículo configurado. Las operaciones administrativas conservan su clave.
 """
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.security import issue_public_control_token
@@ -30,7 +30,10 @@ class PublicControlSession(BaseModel):
                503: {"description": "Configuración de claves incompleta"}},
 )
 def public_control_session(request: Request, response: Response):
-    session = issue_public_control_token(request.app.state.runtime.settings)
+    settings = request.app.state.runtime.settings
+    if settings.commercial_enabled:
+        raise HTTPException(403, "Para operar, inicia sesión o reserva una prueba de exhibición.")
+    session = issue_public_control_token(settings)
     response.headers["Cache-Control"] = "no-store, private"
     response.headers["Pragma"] = "no-cache"
     return session

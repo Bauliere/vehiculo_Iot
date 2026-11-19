@@ -60,7 +60,7 @@ class Database:
             host=self.settings.db_host, port=self.settings.db_port,
             user=self.settings.db_user,
             password=self.settings.db_password.get_secret_value(),
-            database=self.settings.db_name, charset="utf8mb4", cursorclass=DictCursor,
+            database=self.settings.db_name, charset="utf8mb4", cursorclass=DictCursor, binary_prefix=True,
             autocommit=False, ssl=tls,
             connect_timeout=self.settings.db_timeout_seconds,
             read_timeout=self.settings.db_timeout_seconds,

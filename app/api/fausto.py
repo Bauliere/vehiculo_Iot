@@ -37,19 +37,27 @@ async def interpret(request: Request, id_vehiculo: VehicleId):
     except ValidationError:
         raise ApiError(422, "Envía una instrucción de hasta 500 caracteres o una grabación válida.") from None
     client = request.client.host if request.client else ""
-    return await request.app.state.runtime.fausto.interpret(id_vehiculo, source, client)
+    actor = getattr(request.state, "commercial_actor", None)
+    return await request.app.state.runtime.fausto.interpret(id_vehiculo, source, client, scope=actor.digest if actor else None)
 
 
 @router.post("/{plan_id}/ejecutar", status_code=202, summary="Ejecutar un plan de movimiento",
              dependencies=control_access)
 async def execute(request: Request, id_vehiculo: VehicleId, plan_id: PlanId):
-    return await request.app.state.runtime.fausto.execute(id_vehiculo, plan_id)
+    runtime = request.app.state.runtime
+    actor = getattr(request.state, "commercial_actor", None)
+    if actor:
+        runtime.fausto.get_plan(id_vehiculo, plan_id, actor.digest)
+        runtime.commercial.claim(actor, id_vehiculo, request.headers.get("x-iot-channel"))
+        return await runtime.fausto.execute(id_vehiculo, plan_id, scope=actor.digest, validate=runtime.commercial.fleet.safe_steps)
+    return await runtime.fausto.execute(id_vehiculo, plan_id)
 
 
 @router.post("/{plan_id}/cancelar", summary="Cancelar una propuesta o detener el recorrido",
              dependencies=control_access)
 async def cancel(request: Request, id_vehiculo: VehicleId, plan_id: PlanId):
-    return await request.app.state.runtime.fausto.cancel(id_vehiculo, plan_id)
+    actor = getattr(request.state, "commercial_actor", None)
+    return await request.app.state.runtime.fausto.cancel(id_vehiculo, plan_id, scope=actor.digest if actor else None)
 
 
 @router.post("/{plan_id}/confirmar", summary="Confirmar la creación o eliminación de un registro",

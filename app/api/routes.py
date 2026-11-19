@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Request
 
 from app.async_db import run_db
+from app.api.commercial import ControlChannel
 from app.models.api import (
     Command, CommandCreate, CommandUpdate, Demo, DemoCreate, DemoUpdate,
     DemoExecutionResult, DemoMovement, DemoMovementInput, DeleteResult,
@@ -41,12 +42,22 @@ async def _write(request: Request, operation: str, vid=None, resource_id=None, p
 
 @router.get("/vehiculos", response_model=list[Vehicle], tags=["Vehículos"], summary="Consultar todos los vehículos", description="Ejecuta sp_obtener_vehiculos. Una lista vacía es una consulta válida.", responses=READ_ERRORS)
 async def vehicles(request: Request):
-    return await run_db(_runtime(request).catalog.vehicles)
+    runtime = _runtime(request)
+    actor = getattr(request.state, "commercial_actor", None)
+    if actor:
+        return await run_db(runtime.commercial.fleet.units, limit=100, actor=actor)
+    return await run_db(runtime.catalog.vehicles)
 
 
 @router.get("/vehiculos/{id_vehiculo}", response_model=VehicleDetail, tags=["Vehículos"], summary="Consultar vehículo, comandos, estado y DEMO", description="Ejecuta sp_obtener_vehiculo, sp_obtener_comandos_vehiculo, sp_obtener_estado y sp_obtener_demos. estado=null significa que todavía no existe un estado; un vehículo inexistente devuelve 404.", responses=READ_ERRORS)
 async def vehicle(request: Request, id_vehiculo: IdPath):
-    return await run_db(_runtime(request).catalog.detail, id_vehiculo)
+    runtime = _runtime(request)
+    detail = await run_db(runtime.catalog.detail, id_vehiculo)
+    actor = getattr(request.state, "commercial_actor", None)
+    if actor:
+        fleet = runtime.commercial.fleet
+        detail["demos"] = fleet.visible_demos(await run_db(fleet.demos, id_vehiculo), actor)
+    return detail
 
 
 @router.post("/vehiculos", response_model=Vehicle, status_code=201, tags=["Vehículos"], summary="Crear un vehículo", description="Administrador. Ejecuta sp_crear_vehiculo y consulta el recurso creado. El SP establece activo=true.", dependencies=[Depends(require_admin)], responses=WRITE_ERRORS)
@@ -90,8 +101,13 @@ async def state(request: Request, id_vehiculo: IdPath):
 
 
 @router.post("/vehiculos/{id_vehiculo}/movimientos", response_model=MovementResult, tags=["Estado"], summary="Ejecutar un movimiento individual", description="Requiere token de control o administrador. Valida vehículo/comando activos y pertenencia. Ejecuta sp_actualizar_estado + sp_registrar_historial en una transacción; después del commit publica WebSocket. Conserva conectado y no permite origen DEMO.", dependencies=[Depends(require_control)], responses=WRITE_ERRORS)
-async def move(request: Request, id_vehiculo: IdPath, body: MovementInput):
-    return await _runtime(request).control.move(id_vehiculo, body.id_comando, body.origen)
+async def move(request: Request, id_vehiculo: IdPath, body: MovementInput, channel: ControlChannel = None):
+    runtime = _runtime(request)
+    actor = getattr(request.state, "commercial_actor", None)
+    if actor:
+        return await runtime.commercial.move(actor, id_vehiculo, channel,
+                                             body.id_comando, body.origen)
+    return await runtime.control.move(id_vehiculo, body.id_comando, body.origen)
 
 
 @router.get("/vehiculos/{id_vehiculo}/historial", response_model=list[HistoryItem], tags=["Historial"], summary="Consultar los últimos diez movimientos individuales", description="Ejecuta sp_obtener_historial. Filtra cualquier registro antiguo con origen DEMO y limita la respuesta a diez filas en orden fecha_hora e id_historial descendente; no elimina registros en RDS.", responses=READ_ERRORS)
@@ -101,7 +117,12 @@ async def history(request: Request, id_vehiculo: IdPath):
 
 @router.get("/vehiculos/{id_vehiculo}/demos", response_model=list[Demo], tags=["DEMO"], summary="Consultar las DEMO del vehículo", description="Ejecuta sp_obtener_demos. Incluye activas e inactivas; [] es válido si el vehículo no tiene DEMO.", responses=READ_ERRORS)
 async def demos(request: Request, id_vehiculo: IdPath):
-    return await run_db(_runtime(request).catalog.demos, id_vehiculo)
+    runtime = _runtime(request)
+    actor = getattr(request.state, "commercial_actor", None)
+    if actor:
+        fleet = runtime.commercial.fleet
+        return fleet.visible_demos(await run_db(fleet.demos, id_vehiculo), actor)
+    return await run_db(runtime.catalog.demos, id_vehiculo)
 
 
 @router.get("/vehiculos/{id_vehiculo}/demos/{id_demo}", response_model=Demo, tags=["DEMO"], summary="Consultar una DEMO", description="Ejecuta sp_obtener_demos y valida existencia y pertenencia al vehículo.", responses=READ_ERRORS)
@@ -145,8 +166,12 @@ async def delete_demo_movement(request: Request, id_vehiculo: IdPath, id_demo: I
 
 
 @router.post("/vehiculos/{id_vehiculo}/demos/{id_demo}/iniciar", response_model=DemoExecutionResult, status_code=202, tags=["DEMO"], summary="Iniciar una DEMO por WebSocket", description="Requiere control y un comando activo llamado DETENER para finalizar o cancelar. Consulta sp_obtener_movimientos_demo y ejecuta los N movimientos sin bloquear solicitudes, con sp_actualizar_estado y sin sp_registrar_historial. Publica inicio, movimientos y finalización. 202 indica aceptación; los eventos WebSocket comunican el resultado. Rechaza dos DEMO simultáneas del mismo vehículo.", dependencies=[Depends(require_control)], responses=WRITE_ERRORS)
-async def start_demo(request: Request, id_vehiculo: IdPath, id_demo: IdPath):
-    return await _runtime(request).demos.start(id_vehiculo, id_demo)
+async def start_demo(request: Request, id_vehiculo: IdPath, id_demo: IdPath, channel: ControlChannel = None):
+    runtime = _runtime(request)
+    actor = getattr(request.state, "commercial_actor", None)
+    if actor:
+        return await runtime.commercial.start_demo(actor, id_vehiculo, channel, id_demo)
+    return await runtime.demos.start(id_vehiculo, id_demo)
 
 
 @router.post("/vehiculos/{id_vehiculo}/demos/{id_demo}/cancelar", response_model=DemoExecutionResult, tags=["DEMO"], summary="Cancelar una DEMO", description="Requiere control. Suspende movimientos posteriores y emite cancelación por WebSocket. La finalización actualiza el estado con el comando DETENER activo del catálogo; no registra historial DEMO. La respuesta 200 confirma la cancelación y el estado persistido, sin afirmar ejecución física.", dependencies=[Depends(require_control)], responses=WRITE_ERRORS)
