@@ -1,6 +1,8 @@
 # Actividad 4.3 · Administración IoT
 
-La base de trabajo es el repositorio de CONTROL y MONITOREO. El diagnóstico combina una lectura del código local, el SQL archivado y una consulta de metadatos de solo lectura a la base AWS RDS configurada. Queda por comprobar qué versión sirve EC2, la disponibilidad del respaldo restaurado y las pruebas de roles y vehículo físico.
+La actividad parte del commit `f4b34a8` de CONTROL y MONITOREO. En AWS se observaron 30 operaciones HTTP, incluido el catálogo base de 23 operaciones sobre 21 procedimientos. Se comprobó `/health/rds`, la ficha de la unidad 1, sus nueve comandos, estado, diez filas de historial, una DEMO con siete pasos y `estado_inicial` con un cliente WebSocket independiente. La rama 4.3 añade 26 operaciones documentadas en Swagger.
+
+[Comandos de despliegue y respaldo](DESPLEGAR_4_3.md)
 
 ## Diagnóstico del proyecto
 
@@ -16,7 +18,7 @@ Flujo actual. GitHub Pages sirve `docs/`. El navegador usa HTTPS y WSS contra EC
 
 ## REST observado
 
-El catálogo base contiene **23 operaciones HTTP para 21 SP**. Un endpoint puede consultar varios SP y varios endpoints pueden reutilizar el mismo. Las rutas de salud, sesión pública y Fausto.IA se añaden a ese catálogo. En la tabla, `V` significa `/vehiculos/{id_vehiculo}`, `C` significa `V/comandos/{id_comando}`, `D` significa `V/demos/{id_demo}` y `P` significa `D/movimientos/{id_demo_movimiento}`. Los IDs de ruta son enteros positivos.
+El catálogo base contiene **23 operaciones HTTP para 21 SP**. La autorización de la tabla corresponde al despliegue anterior que se auditó. `V` significa `/vehiculos/{id_vehiculo}`, `C` significa `V/comandos/{id_comando}`, `D` significa `V/demos/{id_demo}` y `P` significa `D/movimientos/{id_demo_movimiento}`. Los IDs de ruta son enteros positivos.
 
 | Método y ruta | Entrada | Respuesta normal | Autorización actual |
 | --- | --- | --- | --- |
@@ -58,16 +60,30 @@ Los cuerpos usan enteros estrictos para IDs, códigos, duraciones y banderas `0`
 
 `GET /health` responde por el servidor sin consultar la base. `GET /health/rds` ejecuta una lectura con `sp_obtener_vehiculos`. `GET /control/sesion` emite `token`, `expires_in` e `id_vehiculo` cuando esa modalidad está habilitada. Fausto.IA usa `POST V/fausto/interpretar` con `texto` o con `audio` en Base64 y `mime`, además de `POST V/fausto/{plan_id}/ejecutar`, `/cancelar` y `/confirmar`. La confirmación de cambios de catálogo requiere administración.
 
-CONTROL reutiliza la ficha y el catálogo, los movimientos y el inicio, consulta y cancelación de demos. MONITOREO reutiliza estado, historial y ambos diagnósticos. ADMINISTRACIÓN podrá reutilizar los contratos de vehículo, comando, demo y paso con los controles por recurso correspondientes. Los servicios nuevos serán cuentas y sesiones, modelos y capacidades, asignaciones y soporte, reserva de exhibición y auditoría. Al definir las rutas, deja las operaciones propuestas fuera de Swagger hasta que existan y tengan pruebas.
+CONTROL reutiliza la ficha, el catálogo, los movimientos y las rutas de ejecución de demos. MONITOREO conserva estado, historial y ambos diagnósticos. En modo comercial las lecturas de unidad y DEMO, las órdenes y el WSS requieren permiso sobre la unidad. `GET /control/sesion` y las escrituras de inventario antiguas quedan deshabilitadas en ese modo. Los formularios comerciales guardan usando estos contratos nuevos, bajo `/plataforma`.
+
+| Operaciones | Permiso y entrada | Respuesta |
+| --- | --- | --- |
+| `GET /config`, `GET /catalogo` | Público. El catálogo pagina con `limit` y `offset`. | Modo activo o modelos públicos con capacidad y disponibilidad. |
+| `POST /sesion`, `DELETE /sesion` | Cuenta por correo y contraseña. Bearer para cerrar. | 201 con cuenta y token, o 204 con revocación. |
+| `GET/POST /modelos`, `GET/PUT /modelos/{id}` | Administrador. Filtro `q`. Nombre, descripción, foto HTTPS, activo y capacidades `{nombre,codigo,exhibicion}`. | Lista de modelos o modelo con su catálogo. |
+| `GET/POST /unidades`, `PUT /unidades/{id}` | Administrador. Filtros `q` y `estado`. Nombre, serie, `id_modelo`, estado, descripción y microcontrolador. | Inventario, alta o edición de una unidad física. |
+| `GET/POST /clientes`, `PUT /clientes/{id}` | Administrador. Filtro `q`. Nombre, correo, activo y contraseña inicial o nueva. | Cuenta de comprador. |
+| `PUT /unidades/{id}/asignacion`, `PUT /unidades/{id}/soporte`, `GET /mis-unidades` | Administrador asigna `id_cliente` o `null`. Comprador propio envía `autorizado`. Cada cuenta consulta sus unidades operables. | Unidad asignada, plazo de soporte o lista operable. |
+| `GET/POST /unidades/{id}/editor`, `GET/PUT /unidades/{id}/editor/{demo_id}` | Administrador edita demos de empresa. Comprador edita las suyas en unidades propias. | Cabecera y pasos ordenados en una sola escritura. Ejemplo de paso `{"id_comando":1,"duracion_ms":500,"pausa_ms":0}`. |
+| `GET /dashboard`, `GET /auditoria` | Administrador. Auditoría pagina con `limit` y `offset`. | Totales, conexiones autenticadas y registro comercial. |
+| `POST /exhibicion/{id}/sesiones`, `POST /exhibicion/ordenes`, `DELETE /exhibicion/sesion` | Reserva pública de unidad de exhibición. Bearer de invitado y canal WSS para movimiento. | 201 con plazo y comandos autorizados, registro de orden, o 204 al finalizar. |
+
+La cuenta expira en ocho horas y cierre de sesión invalida su token. El servidor distingue 401 para falta de una sesión válida, 403 para falta de permiso, 404 para recurso ausente o demo privada inaccesible, 409 para conflictos, 422 para datos inválidos y 429 para límites de solicitudes. Modelos, unidades, clientes y recorridos se desactivan de forma lógica. La bitácora guarda fecha UTC, actor, acción, recurso y resultado.
 
 ## WebSocket e historial
 
 - Canal observado `WSS /ws/vehiculos/{id_vehiculo}`. El backend comprueba ID positivo y existencia antes de suscribir. Recibe texto del cliente sin interpretarlo como un movimiento. El firmware y el navegador escuchan eventos. El código actual no autentica la suscripción ni mide presencia del dispositivo por tipo de cliente.
 - Formato común `tipo`, `id_vehiculo`, `comando`, `codigo` y `timestamp` ISO en UTC. `estado_inicial` entrega `estado`. `movimiento_individual` añade ID de comando, origen y estado al completar la transacción. Los eventos de DEMO son `demo_inicio`, `demo_movimiento`, `demo_fin`, `demo_cancelada` y `demo_error`. El paso incluye IDs, `orden`, `duracion_ms`, `pausa_ms` y `estado`. Fausto.IA puede añadir `fausto_id`. El servidor espera duración más pausa entre pasos. El evento terminal documenta el cierre del recorrido.
 - Los movimientos individuales actualizan estado y guardan historial antes de publicar. Las DEMO actualizan estado y publican cada paso. MONITOREO reserva la tabla para la respuesta de `GET /historial`, que excluye origen DEMO y limita a diez filas por `fecha_hora` e `id_historial` descendentes. El último evento puede corresponder a una DEMO sin aparecer en esa tabla.
-- El cliente ya reintenta WSS y vuelve a leer REST tras reconectar. En 4.3 el cambio de unidad deberá cerrar el canal anterior, descartar respuestas en vuelo de esa unidad y validar la nueva suscripción. El permiso deberá revisarse al reasignar, expirar o cerrar sesión. Una credencial breve de canal vinculada a identidad, unidad y finalidad permite separar el navegador del firmware. Verificar el mecanismo con la ESP y un cliente independiente antes de cerrar el canal antiguo.
+- En 4.3, el navegador negocia los subprotocolos `iot.v1` y `auth.<token>`. El servidor devuelve `iot.v1` y envía `canal_control` con `canal` y `dispositivo`. Envía `X-IoT-Channel` para identificar la pestaña que solicitará movimiento. La ESP se autentica por `X-Device-Key` con una credencial vinculada a su unidad. `dispositivo` se actualiza al abrir o cerrar su canal. El navegador vuelve a consultar REST tras reconectar y, al cambiar de unidad, cierra su canal anterior y descarta las consultas pendientes. Reasignar, cerrar sesión, expirar o revocar soporte cierra los canales afectados. La reserva de invitado recibe sólo eventos necesarios para operar su sesión.
 
-## Esquema confirmado y propuesta
+## Esquema confirmado y ampliación
 
 El inventario de solo lectura por TLS confirmó el esquema `vehiculo_iot` en MySQL 8.4.9. Hay seis tablas InnoDB con `utf8mb4_0900_ai_ci`, 34 columnas, 18 componentes de índices, ocho FK, 21 SP y ningún disparador visible. Los conteos de parámetros de las rutinas coinciden con el catálogo de FastAPI. La consola de AWS identifica el tipo exacto de recurso y permite elegir el procedimiento de respaldo apropiado. Confirma allí si es un clúster Aurora o una instancia RDS antes de tomar el snapshot.
 
@@ -95,37 +111,34 @@ Los antecedentes se encuentran en `apoyo/docs/CONTRATO_RDS.md`, `apoyo/anteriore
 
 Las FK verificadas aplican `CASCADE` sobre comandos, demos, estado e historial al borrar un vehículo, y sobre pasos al borrar una demo. Si se intenta borrar un comando usado en un paso, se aplica `RESTRICT`. Cuando se borra un comando permitido, las referencias de estado e historial quedan en `NULL`. Las bajas comerciales deben usar estado inactivo y preservar IDs. Antes de incorporar auditoría y asignaciones, revisar especialmente los accesos a `sp_eliminar_vehiculo` y `sp_eliminar_comando` y conservar la lectura de registros existentes.
 
-Relaciones propuestas, sujetas al DDL observado en la copia de prueba.
+Relaciones de las migraciones 001 y 002.
 
 ```mermaid
 erDiagram
-    ROLES ||--o{ CUENTAS : asigna
-    CUENTAS ||--o{ SESIONES_CUENTA : inicia
-    MODELOS ||--o{ VEHICULOS : clasifica
-    MODELOS ||--o{ CAPACIDADES_MODELO : define
-    VEHICULOS ||--o{ ASIGNACIONES : conserva
-    CUENTAS ||--o{ ASIGNACIONES : recibe
-    VEHICULOS ||--o{ PERMISOS_SOPORTE : limita
-    CUENTAS ||--o{ PERMISOS_SOPORTE : autoriza
+    CLIENTES_IOT ||--o{ SESIONES_CUENTA_IOT : inicia
+    MODELOS_VEHICULO o|--o{ VEHICULOS : clasifica
+    MODELOS_VEHICULO ||--o{ CAPACIDADES_MODELO_IOT : define
+    VEHICULOS ||--o{ ASIGNACIONES_IOT : conserva
+    CLIENTES_IOT ||--o{ ASIGNACIONES_IOT : recibe
+    VEHICULOS ||--o| SOPORTE_IOT : limita
+    CLIENTES_IOT ||--o{ SOPORTE_IOT : autoriza
+    VEHICULOS ||--o| DISPOSITIVOS_IOT : autentica
     VEHICULOS ||--o{ COMANDOS : admite
     VEHICULOS ||--o| ESTADO_VEHICULO : mantiene
     VEHICULOS ||--o{ HISTORIAL_COMANDOS : registra
     VEHICULOS ||--o{ DEMOS : ejecuta
-    CUENTAS o|--o{ DEMOS : posee
-    MODELOS ||--o{ DEMOS_FABRICA : publica
-    DEMOS_FABRICA ||--o{ PASOS_FABRICA : ordena
-    CAPACIDADES_MODELO ||--o{ PASOS_FABRICA : permite
+    CLIENTES_IOT o|--o{ DEMOS : posee
     DEMOS ||--o{ DEMO_MOVIMIENTOS : ordena
     COMANDOS ||--o{ DEMO_MOVIMIENTOS : usa
-    VEHICULOS ||--o{ RESERVAS_INVITADO : limita
-    CUENTAS o|--o{ AUDITORIA : origina
+    VEHICULOS ||--o{ RESERVAS_IOT : limita
+    CLIENTES_IOT o|--o{ AUDITORIA_IOT : origina
 ```
 
 - Mantener `vehiculos.id_vehiculo` para las integraciones existentes. Añadir identificador físico único, modelo relacionado y estado comercial `disponible`, `vendida`, `exhibicion` o `inactiva`. Incorporar columnas opcionales primero. Completar el catálogo y verificar el mapeo antes de exigir campos.
-- Cada unidad admite como máximo una asignación activa. Conservar intervalos y auditoría de cada cambio. Resolver la exclusividad con fila única activa por unidad o bloqueo de su fila y verificación transaccional. El permiso de soporte identifica unidad, administrador autorizado y caducidad y puede revocarse. Roles, propiedad y soporte se verifican en el servidor.
-- Las capacidades por modelo son únicas por `(modelo, codigo)` y se corresponden con el catálogo activo de cada unidad. Reutilizar demos y pasos de unidad para recorridos privados. Los de fábrica por modelo guardan capacidad, orden y tiempos, y se resuelven contra el comando compatible de la unidad al ejecutar. El editor debe validar la secuencia completa en una transacción, con límites de tiempo y concurrencia.
-- La reserva de exhibición se toma y libera de forma atómica por unidad. Debe aplicar la misma exclusión a invitados y operadores autorizados. Validar vencimiento, unidad, comando y límites en cada acción. Probar DETENER al expirar o perder conexión. Un watchdog local del dispositivo acota la última orden activa si la red no permite recibir la parada.
-- La auditoría registra actor o sesión de invitado, acción, recurso, resultado y fecha UTC. Indexar los filtros de unidad, fecha, actor y asignación. Guardar identificadores de sesión revocables y credenciales protegidas. Mantener contraseñas, claves y tokens fuera de eventos, logs y Git.
+- Las columnas generadas `unidad_vigente` y `unidad_reservada` tienen índices únicos. Conservan intervalos de asignación y reserva y garantizan una sola fila abierta por unidad. El titular autoriza a la empresa para soporte durante 15 minutos y puede revocar ese permiso.
+- Las capacidades del modelo se sincronizan con comandos activos por código y nombre. Se conservan IDs con histórico. Las demos de fábrica y privadas se vinculan a su unidad compatible y reutilizan `demos` y `demo_movimientos`. Las de fábrica tienen propietario nulo. El editor valida hasta 24 pasos, 10 s por intervalo y 60 s totales, y guarda el conjunto en una transacción.
+- La prueba de exhibición dura 60 s y admite direcciones explícitas y DETENER. El backend limita la frecuencia de pulsos y mantiene ocupada la unidad mientras no confirme el registro de la orden de parada. El watchdog del firmware acota la actuación cuando falla el transporte.
+- Las contraseñas usan scrypt con salt. Se almacenan huellas de las sesiones y credenciales de dispositivo. La bitácora guarda los identificadores comerciales necesarios para verificar la operación.
 
 ## Respaldo, entorno de prueba y transición
 
@@ -134,6 +147,10 @@ erDiagram
 `migrations/4_3/001_modelos_unidades.up.sql` agrega el catálogo `modelos_vehiculo` y enlaza `vehiculos` sin cambiar sus IDs ni el campo `modelo` que lee la API actual. El identificador físico es único. Las columnas nuevas admiten `NULL` para que las filas existentes y las altas del procedimiento anterior sigan funcionando. La clasificación y asignación de unidades requieren datos confirmados.
 
 En una instancia local desechable de MySQL 8.0.45, se importó el DDL capturado de RDS y se verificó la migración con un alta anterior y otra posterior mediante `sp_crear_vehiculo`. Coincidieron los conteos previos y posteriores a la migración, los identificadores existentes y los 21 procedimientos. Se comprobaron rechazos por serie duplicada, modelo inexistente y serie en blanco. Esta validación usó datos de prueba. La siguiente validación se realiza sobre una copia restaurada del recurso AWS, con el motor y los datos del entorno objetivo.
+
+### Migración 002 · Permisos y operación comercial
+
+La migración 002 añade las relaciones del diagrama, una foto opcional al modelo y el propietario de DEMO. En el ensayo local, el esquema pasó de 6 a 15 tablas con 21 procedimientos. Tras 001/002 se conservaron los IDs existentes, el conteo de cada tabla anterior y la firma del historial de prueba. La verificación de una restauración de AWS sigue pendiente. [SQL versionado y recuperación](DESPLEGAR_4_3.md#respaldo-y-verificación-sql).
 
 Con el esquema de la copia seleccionado en Workbench, ejecuta `001_modelos_unidades.verify.sql`, guarda el resultado, ejecuta `001_modelos_unidades.up.sql` una sola vez y repite la verificación. Si falla la migración, conserva el log y descarta la copia de prueba o recupérala desde el snapshot. Ese proceso también cubre un fallo tras el primer DDL y evita quitar columnas que ya puedan contener datos. La fase de aplicación en el recurso original sigue pendiente.
 
@@ -167,7 +184,7 @@ Con el esquema de la copia seleccionado en Workbench, ejecuta `001_modelos_unida
 4. Versiona SQL por estructura nueva, columnas e índices compatibles, carga de datos existentes, verificación y recuperación. Aplica en la copia, valida los SP actuales, compara conteos e IDs y prueba los escenarios de aislamiento. El DDL puede confirmar cambios implícitamente. La recuperación se prueba restaurando una copia o ejecutando una corrección compatible y revisada.
 5. Publica por etapas al superar las pruebas. Mantén el identificador de unidad y el protocolo necesarios para la ESP. Restringe la sesión pública antigua antes de exponer inventario privado y comprueba en Swagger que el API que sirve EC2 corresponde al commit esperado. Documenta la versión SQL y el resultado aplicado.
 
-## Diseño propuesto para las tres vistas
+## Interfaz y roles
 
 Las vistas comparten navegación, paletas, favicon y créditos. El selector de unidad se coloca antes de cualquier acción sobre el vehículo y los tres indicadores de conectividad ocupan el mismo sitio cuando aplican. En teléfono, CONTROL conserva la pantalla fija y sus zonas táctiles. Los listados, formularios y el editor de Administración pueden desplazarse dentro de sus vistas.
 
@@ -177,34 +194,44 @@ Las vistas comparten navegación, paletas, favicon y créditos. El selector de u
 | MONITOREO | Selector de unidad, conectividad, tarjeta del último movimiento o evento y tabla de hasta diez individuales. El comprador y las sesiones de soporte pueden ver la unidad autorizada. El invitado ve únicamente información necesaria para su sesión de exhibición. |
 | ADMINISTRACIÓN | El administrador empieza con indicadores reales y luego inventario, modelos y capacidades, clientes, asignaciones, demos de fábrica y auditoría. Los formularios se abren en el contexto de la lista. «Mis vehículos» y las demos privadas tienen acceso desde la sesión del comprador. El invitado se queda en el catálogo y la reserva de exhibición. |
 
-En el editor táctil, el nombre y la unidad o el modelo aparecen primero, seguidos por la duración total. Cada paso tiene orden, comando permitido, duración, pausa y acciones «Subir», «Bajar» y «Quitar». Los controles de orden sirven con dedo y teclado. «Agregar paso» y «Guardar» deben quedar visibles, y los errores deben aparecer junto al valor inválido. Al editar, conserva los cambios locales hasta que el guardado se confirme.
-
-El enunciado pide coherencia visual y accesibilidad. Se puede reutilizar el movimiento suave de tarjetas y el holograma de Fausto como decoración discreta en resúmenes. El efecto se pausa con `prefers-reduced-motion` y se omite en formularios, tablas, cronómetro y DETENER para que los datos y controles mantengan posición y contraste.
-
-Quedan por confirmar las cuentas o proveedor de identidad que se usarán, qué unidad es de exhibición, cuáles pueden asignarse, y la lista de comandos y tiempos permitidos para la prueba física. Con esos datos, los puntos de cambio serían `app/api/` y `app/security.py` para acceso, `app/services/` para permisos y reglas, una carpeta SQL versionada para migraciones y `docs/assets/` más `docs/index.html` para la navegación, Administración y el editor.
+El editor muestra comando, duración, pausa y botones para subir, bajar o quitar cada paso. Active o desactive el recorrido desde el formulario. Las tarjetas nuevas recuperan el holograma de Fausto y la inclinación con puntero fino. Los botones y el formulario siguen accesibles con teclado o toque, y los efectos respetan la preferencia de movimiento reducido. El icono de fotografía alterna CRT Warp y Rectángulos. La paleta Gris violeta usa los colores Ultraviolet de la referencia. [Componente CRT Warp](https://reactbits.dev/c/backgrounds/crt-warp).
 
 ## Evidencias y pendientes de actividad
 
-La matriz siguiente parte de **No ejecutado** para la validación 4.3 en infraestructura. Las pruebas necesitan cuentas de demostración y al menos una unidad de comprador y otra de exhibición en la copia de prueba. Usa usuarios A y B para comprobar aislamiento y dos clientes simultáneos para comprobar la reserva. Registra URL, fecha, resultado y evidencia sin secretos.
+La matriz siguiente registra los resultados locales y sirve de guía para la presentación. El despliegue público 4.3, la restauración del snapshot en AWS, las rondas de los tres integrantes y el vehículo físico están **No ejecutados**. En la prueba colaborativa registra URL, fecha, resultado y evidencia por plataforma y rol.
 
-| Prueba | Criterio y evidencia |
-| --- | --- |
-| P01 · Login Admin | Iniciar y cerrar sesión con cuenta de prueba. Comprobar expiración. |
-| P02 · Alta de unidad | Crear unidad con identificador físico único; comprobar duplicado e inventario. |
-| P03 · Alta de cliente | Registrar comprador y comprobar que aparece en clientes. |
-| P04 · Asignación | Asignar y reasignar; comprobar historial y revocación previa. |
-| P05 · Aislamiento | Mostrar únicamente las unidades del comprador conectado. |
-| P06 · Control | Confirmar comando permitido y DETENER, con respuestas HTTP y estado observado. |
-| P07 · WSS | Recibir eventos en cliente externo y otra pestaña autorizada; comprobar cierre al revocar acceso. |
-| P08 · Historial | Con más de diez individuales, comprobar únicamente los diez recientes y el orden. |
-| P09 · Demo persistente | Guardar pasos, reabrir desde otra sesión y revisar orden y tiempos. |
-| P10 · Ejecución y cancelación | Ver inicio, pasos y terminal; comprobar que DETENER interrumpe y que no cambió la tabla de movimientos por pasos internos. |
-| P11 · Invitado | Abrir catálogo, reservar exhibición y comprobar expiración y liberación. |
-| P12 · Invitado contra Admin | Comprobar rechazo en una ruta administrativa con token de invitado. |
-| P13 · Vehículo ajeno | Comprobar que REST y WSS del comprador A rechazan el recurso de B. |
-| P14 · Exclusividad | Intentar dos reservas sobre la misma unidad y comprobar que solo una la opera. |
-| P15 · Reconexión | Interrumpir WSS y comprobar carga REST al volver, con salud API y RDS verificada por separado. |
-| P16 · Responsive | Revisar móvil vertical y horizontal y escritorio, teclado, foco y lectura del historial. |
-| P17 · Auditoría | Comprobar actor, acción, unidad, fecha y resultado tras operaciones de prueba. |
+| Prueba | Local | Evidencia observada |
+| --- | --- | --- |
+| P01 · Login Admin | Correcto | Inicio desde navegador y rechazo de una cuenta administrativa con sesión vencida. |
+| P02 · Alta de unidad | Correcto | HTTP 201 con serie única y 409 al repetirla. |
+| P03 · Alta de cliente | Correcto | HTTP 201 de dos compradores y acceso por cuenta propia. |
+| P04 · Asignación | Correcto | Reasignación conservada en bitácora y cierre del canal del comprador anterior. |
+| P05 · Aislamiento | Correcto | Lista limitada al comprador y selector que cambia el vehículo activo. |
+| P06 · Control | Correcto | HTTP 200 y eventos AVANZAR y DETENER con un cliente WSS que simula el dispositivo. |
+| P07 · WSS | Correcto | Canal autorizado, presencia del dispositivo y cierre 1008 al revocar soporte o reasignar. |
+| P08 · Historial | Correcto | Diez registros después de doce órdenes individuales. |
+| P09 · Demo persistente | Correcto | Pasos reordenados en el editor y recuperados en el orden guardado desde MySQL. |
+| P10 · Ejecución y cancelación | Correcto | HTTP 202 al iniciar, cancelación y retorno a DETENER con el historial individual idéntico. |
+| P11 · Invitado | Correcto | Catálogo, reserva de un minuto, pulso, expiración de prueba y parada al cerrar WSS. |
+| P12 · Invitado contra Admin | Correcto | HTTP 401 en Dashboard con un token de exhibición. |
+| P13 · Vehículo ajeno | Correcto | Rechazo REST y WSS con otra cuenta y rechazo de demo privada tras reasignar. |
+| P14 · Exclusividad | Correcto | Dos peticiones simultáneas con resultados 201 y 409. La segunda pestaña de comprador también se rechaza al intentar operar. |
+| P15 · Reconexión | Correcto | Pruebas de cliente WSS y reconciliación REST. Lecturas separadas de API y RDS. |
+| P16 · Responsive | Correcto en emulación | Recorrido comercial a 320 px, scroll del editor y controles cortos en horizontal. Falta teléfono físico. |
+| P17 · Auditoría | Correcto | Registro de dos asignaciones de la misma unidad y operaciones de inventario. |
+
+Los casos de MySQL se pueden repetir con un esquema desechable llamado `iot43_stage`, el DDL exportado y las dos migraciones. `IOT43_TEST_MYSQL_PORT` activa las pruebas que usan exclusivamente `127.0.0.1` y esa base. Para los listados comerciales se probaron nombres largos, diacríticos, correos sin espacios, campos ausentes y 1,000 unidades paginadas. El editor recuperó desplazamiento vertical a 320 px y el encabezado ajustó sus saltos de línea al ampliar el texto.
+
+```powershell
+$env:IOT43_TEST_MYSQL_PORT = '33643'
+python -m unittest discover -s tests
+node --test docs/tests/*.test.js
+playwright-cli -s=iot43-qa open 'http://127.0.0.1:5500/?api=local' --browser=msedge
+playwright-cli -s=iot43-qa run-code --filename=docs/tests/commercial-layout.playwright.js
+```
 
 Cada integrante presenta su plataforma. En las tres rondas rota quién actúa como administrador, comprador e invitado. Las capturas deben incluir navegación y URL publicadas, Swagger, respaldo/migración, autorización REST y WSS, persistencia del historial y resultados de la matriz. La prueba física se registra durante una ejecución supervisada, con el vehículo identificado.
+
+### Conclusión técnica
+
+Las operaciones heredadas siguieron sirviendo al consultar y mover las unidades por los mismos IDs. Las relaciones nuevas concentran roles, propiedad y vigencia. Al reasignar una unidad, la suscripción anterior pierde acceso y la demo privada permanece vinculada a su titular. El estado de conexión del navegador, la lectura de RDS y la presencia de un dispositivo se observaron por vías distintas. La siguiente mejora de firmware sería confirmar en el canal el comando que aplicó, con un identificador que permita conciliarlo con la orden HTTP.

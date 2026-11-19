@@ -1,10 +1,10 @@
 # Máquina de carga IoT
 
-Aplicación web para controlar y monitorear un vehículo a distancia. CONTROL incluye joystick, palanca de caja, luces, sonido, DETENER y recorridos DEMO. MONITOREO muestra el último movimiento reportado, las respuestas de las órdenes y los diez movimientos individuales más recientes guardados en Amazon RDS.
+Plataforma web de control, monitoreo y administración de unidades IoT. Control incluye joystick, caja, luces, sonido, DETENER y recorridos. Monitoreo muestra el último estado y hasta diez movimientos individuales de RDS. Administración gestiona modelos, unidades, clientes, asignaciones, demostraciones y auditoría.
 
 [GitHub Pages](https://bauliere.github.io/vehiculo_Iot/) · [Swagger UI](https://vehiculo-iot.34-225-114-88.sslip.io/docs) · [Guía de instalación y pruebas](docs/guia/MONITOREO_4_2.md)
 
-[Actividad 4.3 · Inventario y propuesta de Administración](docs/guia/ACTIVIDAD_4_3.md)
+[Actividad 4.3 · Contratos, diagrama y pruebas](docs/guia/ACTIVIDAD_4_3.md) · [Despliegue en EC2 y GitHub](docs/guia/DESPLEGAR_4_3.md)
 
 ## Abrir en local
 
@@ -17,6 +17,14 @@ py assets/servidor_local.py
 
 Abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/). Mantén la terminal abierta y pulsa Ctrl+C para detener el servidor. La interfaz usa la API de AWS configurada en `docs/assets/js/config.js`. En GitHub Pages basta con un navegador y conexión a internet.
 
+Para una API local en el puerto 8000 usa [127.0.0.1:5500/?api=local](http://127.0.0.1:5500/?api=local). Configura el backend para la copia MySQL de ensayo y arráncalo con `python -m app.main`. Las variables de despliegue se documentan en `.env.example`. `COMMERCIAL_ENABLED` activa 4.3 y `EXHIBITION_ENABLED` habilita reservas en unidades preparadas.
+
+| Rol | Acceso |
+| --- | --- |
+| Administrador | Inventario, clientes, asignaciones, demostraciones de empresa y auditoría. Control y monitoreo cuando un comprador autoriza soporte. |
+| Usuario | Unidades asignadas, Control, Monitoreo, demos privadas y autorización temporal de soporte. |
+| Invitado | Catálogo público y reserva exclusiva de una unidad de exhibición durante un minuto. |
+
 ## Manejo y monitoreo
 
 - Arrastra el joystick o usa las flechas del teclado con el joystick enfocado. La palanca de la caja responde al arrastre, toque y flechas verticales. Al soltar se solicita DETENER.
@@ -24,13 +32,13 @@ Abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/). Mantén la terminal abier
 - La DEMO 1 se carga si está activa. Elige el recorrido y mantén pulsado **Iniciar DEMO** hasta que se llene el botón. Los eventos de cada paso iluminan o mueven el control correspondiente. DETENER tiene prioridad sobre la secuencia.
 - Monitoreo consulta estado e historial por REST, recibe eventos por el mismo WSS y recupera datos cuando vuelve la conexión. El historial muestra hasta diez filas persistidas, en hora de Ciudad de México. Los pasos internos de DEMO actualizan el estado y quedan fuera del historial individual.
 - CONTROL y MONITOREO caben en la pantalla del teléfono y la laptop. En horizontal, la barra de acciones queda al costado en el teléfono. El historial se consulta por páginas cuando hace falta. Pulsa el icono junto a CONTROL / IoT para cambiar la paleta, incluida Rojo grafito.
-- Pantalla completa enfoca la vista de CONTROL. Fausto.IA interpreta texto o voz, muestra los pasos y ejecuta el recorrido. Crear o borrar comandos y DEMO pide confirmación de administrador. [Uso y configuración de Fausto.IA](docs/README.md#faustoia-y-pantalla-completa)
+- Pantalla completa enfoca Control. Abre Fausto.IA sobre la barra de mandos para interpretar texto o voz y ejecutar el recorrido autorizado. En 4.3, las modificaciones persistentes se hacen en Administración. [Configuración de Fausto.IA](docs/README.md#faustoia-y-pantalla-completa).
 
 ## Estructura
 
 | Ruta | Contenido |
 |---|---|
-| `docs/index.html` | Página de CONTROL y MONITOREO |
+| `docs/index.html` | Navegación y vistas integradas, incluido el catálogo de exhibición |
 | `docs/assets/css`, `docs/assets/images`, `docs/assets/vendor` | Estilos, imágenes, favicon y Bootstrap |
 | `docs/assets/js/components` | Vistas, navegación, joystick, palanca y animaciones |
 | `docs/assets/js/controllers`, `domain`, `state` | Órdenes, catálogo y sincronización |
@@ -42,9 +50,9 @@ Abre [http://127.0.0.1:5500/](http://127.0.0.1:5500/). Mantén la terminal abier
 
 FastAPI corre en EC2, detrás de Caddy. La base `vehiculo_iot` conserva los 21 procedimientos almacenados. El navegador consulta `GET /vehiculos/1/estado`, `GET /vehiculos/1/historial` y escucha `/ws/vehiculos/1`. `/health` comprueba la API y `/health/rds` comprueba la lectura de RDS.
 
-## Acceso automático en AWS
+## Acceso automático de 4.1 y 4.2
 
-`GET /control/sesion` entrega una sesión de 15 minutos para movimientos y DEMO del vehículo configurado. El navegador la guarda en memoria. Las claves maestras se configuran en el `.env` de la instancia.
+Con el modo comercial desactivado, `GET /control/sesion` entrega una sesión de 15 minutos para movimientos y DEMO del vehículo configurado. El navegador la guarda en memoria. Las claves maestras se configuran en el `.env` de la instancia.
 
 El modo está desactivado por defecto. Al activar `PUBLIC_CONTROL_ENABLED=true` con `PUBLIC_CONTROL_VEHICLE_ID=1`, cualquier visitante puede operar el vehículo 1. Las operaciones administrativas requieren su clave. Para cerrar el acceso público, cambia la variable a `false` y reinicia `VehiculoIoT-API`.
 
@@ -61,20 +69,20 @@ node --test tests/*.test.js
 Desde la raíz, con el entorno virtual de la API preparado:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_public_control.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-Las pruebas de navegador usan respuestas REST y WSS de prueba. En la guía están los pasos para comprobar el WSS y el historial reales con Postman.
+La guía 4.3 identifica qué pruebas usan respuestas interceptadas y cuáles usan una copia MySQL con un cliente WSS de dispositivo. [Matriz y ejecución local](docs/guia/ACTIVIDAD_4_3.md#evidencias-y-pendientes-de-actividad).
 
 ## Efectos visuales
 
-React Bits se carga en secciones de la interfaz. Sus efectos usan la paleta activa. Los archivos compilados están incluidos en `docs/assets/vendor`, así que la página se sigue sirviendo como sitio estático.
+CRT Warp es el fondo inicial. El botón con el icono de fotografía alterna con Rectángulos y recuerda la elección. Ambos fondos usan la paleta activa. Los archivos compilados están incluidos en `docs/assets/vendor`, así que la página se sigue sirviendo como sitio estático. [CRT Warp de React Bits](https://reactbits.dev/c/backgrounds/crt-warp).
 
 Si editas los componentes en `docs/assets/react-bits`, recompílalos desde `docs` con Node.js y pnpm:
 
 ```powershell
-pnpm install --frozen-lockfile
-pnpm build:effects
+pnpm install --frozen-lockfile --ignore-scripts
+node assets/react-bits/build.mjs
 ```
 
 Los componentes proceden del catálogo de React Bits. Los créditos y las licencias están en [iot-effects.LICENSE.txt](docs/assets/vendor/iot-effects.LICENSE.txt).
