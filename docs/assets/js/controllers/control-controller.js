@@ -25,7 +25,7 @@ export class ControlController {
 
   permitted() {
     if (!this.api.hasKey()) throw new Error('La sesión de control todavía no está disponible.');
-    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Pulsa Actualizar conexión.');
+    if (this.state.value.authError) throw new Error('La sesión fue rechazada. Usa Reintentar conexión.');
     if (!this.canOperate()) throw new Error('Espera a que la API y WebSocket estén disponibles.');
   }
 

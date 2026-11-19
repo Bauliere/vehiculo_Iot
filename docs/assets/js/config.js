@@ -1,6 +1,8 @@
 // Configuración pública. Nunca pongas claves o contraseñas en este archivo.
+const localApi = ['localhost', '127.0.0.1'].includes(globalThis.location?.hostname)
+  && new URLSearchParams(globalThis.location.search).get('api') === 'local';
 export const CONFIG = Object.freeze({
-  apiBaseUrl: 'https://vehiculo-iot.34-225-114-88.sslip.io',
+  apiBaseUrl: localApi ? 'http://127.0.0.1:8000' : 'https://vehiculo-iot.34-225-114-88.sslip.io',
   vehicleId: 1,
   author: 'Amador Ramírez Jesús Gabriel',
   teacher: 'Víctor Manuel Pinedo Fernández',

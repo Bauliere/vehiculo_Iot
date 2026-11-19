@@ -3,13 +3,15 @@ import { validateServiceUrl } from '../utils/errors.js';
 /** Sesión del navegador: no identifica presencia del microcontrolador. */
 export class SocketClient {
   constructor(url, { onStatus = () => {}, onEvent = () => {}, onError = () => {},
-    WebSocketImpl = globalThis.WebSocket, random = Math.random } = {}) {
+    WebSocketImpl = globalThis.WebSocket, random = Math.random, protocols, onPolicy = () => {} } = {}) {
     this.url = validateServiceUrl(url, true);
     this.onStatus = onStatus;
     this.onEvent = onEvent;
     this.onError = onError;
     this.WebSocketImpl = WebSocketImpl;
     this.random = random;
+    this.protocols = protocols;
+    this.onPolicy = onPolicy;
     this.socket = null;
     this.running = false;
     this.attempts = 0;
@@ -58,7 +60,7 @@ export class SocketClient {
     }
     this.onStatus(this.attempts ? 'reconnecting' : 'connecting');
     let socket;
-    try { socket = new this.WebSocketImpl(this.url); } catch {
+    try { socket = new this.WebSocketImpl(this.url, this.protocols); } catch {
       this.onStatus('disconnected');
       this.onError('No fue posible abrir WebSocket. Revisa la dirección WSS.');
       this.schedule();
@@ -102,15 +104,27 @@ export class SocketClient {
       this.onError('La conexión WSS se interrumpió. Se intentará recuperar.');
       socket.close();
     });
-    socket.addEventListener('close', () => {
+    socket.addEventListener('close', event => {
       if (this.socket !== socket) return;
       clearTimeout(this.openTimer);
       clearTimeout(this.stableTimer);
       this.socket = null;
       if (!this.running) return;
       this.onStatus('disconnected');
+      if (event.code === 1008) {
+        this.stop();
+        this.onPolicy();
+        return;
+      }
       this.schedule();
     });
+  }
+
+  retry() {
+    if (!this.running) { this.start(); return; }
+    if (this.socket && this.socket.readyState <= 1) return;
+    clearTimeout(this.timer);
+    this.connect();
   }
 
   schedule() {

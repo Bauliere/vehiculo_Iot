@@ -48,7 +48,7 @@ export function normalizeState(value, vehicleId) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.id_vehiculo !== vehicleId ||
       typeof value.vehiculo !== 'string' || !optionalInteger(value.id_comando) ||
       !optionalInteger(value.codigo) || (value.comando !== null && typeof value.comando !== 'string') ||
-      ![0, 1].includes(value.conectado)) invalid('El estado recibido no corresponde al vehículo o tiene un formato inválido.');
+      ![0, 1, false, true].includes(value.conectado)) invalid('El estado recibido no corresponde al vehículo o tiene un formato inválido.');
   const epoch = parseServerTime(value.fecha_actualizacion);
   if (value.fecha_actualizacion != null && epoch === null) invalid('El estado contiene una fecha inválida.');
   return Object.freeze({

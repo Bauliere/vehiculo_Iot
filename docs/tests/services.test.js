@@ -123,7 +123,8 @@ test('El catálogo resuelve IDs, filtra inactivos y ofrece únicamente comandos 
   assert.equal(commandLabel(catalog.get(71)), 'Luces');
   assert.equal(catalog.all().length, 4);
   assert.throws(() => new Catalog([commands[0], commands[0]]), ApiError);
-  assert.throws(() => new Catalog([{ ...commands[0], activo: true }]), ApiError);
+  assert.equal(new Catalog([{ ...commands[0], activo: true }]).direction('forward').id_comando, 42);
+  assert.throws(() => new Catalog([{ ...commands[0], activo: 2 }]), ApiError);
   assert.throws(() => new Catalog([{ ...commands[0], codigo: '1' }]), ApiError);
 });
 

@@ -1,6 +1,7 @@
 import { Component, useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import FlipCard from './components/FlipCard.jsx';
+import CRTWarp from './components/CRTWarp.jsx';
 import HalftoneReveal from './components/HalftoneReveal.jsx';
 import MicroSlats from './components/MicroSlats.jsx';
 import TargetCursor from './components/TargetCursor.jsx';
@@ -104,6 +105,7 @@ export function mountVisuals(document) {
   const paletteKeys = ['bg', 'slat-accent', 'surface-deep', 'text', 'accent', 'accent-strong'];
   const logo = document.querySelector('#theme-button img').src;
   const background = withVisualRoot(document.getElementById('slats-effect'));
+  const crt = withVisualRoot(document.getElementById('crt-effect'));
   const cursorHost = document.getElementById('cursor-effect');
   const cursorHome = cursorHost.parentNode;
   const cursor = withVisualRoot(cursorHost);
@@ -161,7 +163,21 @@ export function mountVisuals(document) {
     const palette = values();
     const active = webgl && !motion.matches;
     const animate = !motion.matches;
-    background.render(active && <MicroSlats
+    const rectangles = html.dataset.background === 'slats';
+    const style = getComputedStyle(html);
+    const staticView = motion.matches;
+    crt.render(webgl && !rectangles && <CRTWarp
+      color={style.getPropertyValue('--crt-ink').trim()}
+      backgroundColor={style.getPropertyValue('--crt-paper').trim()}
+      lightMode={style.colorScheme === 'light'}
+      dpr={small.matches ? 0.9 : 1.4}
+      fps={staticView ? 18 : (small.matches ? 24 : 45)}
+      intro={!staticView}
+      paused={staticView}
+      mouseReact={mouse.matches && !staticView}
+      changeOnClick={!staticView && mouse.matches}
+    />);
+    background.render(active && rectangles && <MicroSlats
       preset="swell"
       color={palette['slat-accent'] || palette.accent}
       glintColor={palette['accent-strong']}
@@ -210,7 +226,7 @@ export function mountVisuals(document) {
     });
   };
   const attributes = new MutationObserver(scheduleSync);
-  attributes.observe(html, { attributes: true, attributeFilter: ['data-theme', 'data-view'] });
+  attributes.observe(html, { attributes: true, attributeFilter: ['data-theme', 'data-view', 'data-background'] });
   const titles = new MutationObserver(scheduleSync);
   for (const { source } of headings) titles.observe(source, { childList: true, characterData: true, subtree: true });
   document.addEventListener('iot:flip', event => {

@@ -164,16 +164,16 @@ body {
 }
 
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  :is(#demo-card, #session-card, .latest-panel, .history-panel) {
+  :is(#demo-card, .latest-panel, .history-panel, [data-tilt-card]) {
     transform: perspective(940px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
     transition: transform .25s ease-out;
   }
 
-  :is(#demo-card, #session-card, .latest-panel, .history-panel)[data-tilting] {
+  :is(#demo-card, .latest-panel, .history-panel, [data-tilt-card])[data-tilting] {
     transition-duration: .13s;
   }
 
-  :is(#demo-card, #session-card)::after {
+  #demo-card::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -185,7 +185,7 @@ body {
     transition: opacity .24s ease;
   }
 
-  :is(#demo-card, #session-card)[data-tilting]::after {
+  #demo-card[data-tilting]::after {
     opacity: 1;
   }
 }

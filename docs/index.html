@@ -1,18 +1,19 @@
 <!doctype html>
-<html lang="es" data-theme="silver" data-view="control">
+<html lang="es" data-theme="silver" data-view="control" data-background="crt">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#0a0a0c">
-<meta name="description" content="Control y monitoreo de la máquina de carga IoT. Dirección, caja, luces, sonido y movimientos en tiempo real.">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"><meta name="theme-color" content="#0a0a0c">
+<meta name="description" content="Control, monitoreo y administración de vehículos IoT.">
 <title>CONTROL / IoT — Máquina de carga</title>
 <link rel="icon" href="./assets/images/favicon.ico" type="image/x-icon"><link rel="stylesheet" href="./assets/vendor/bootstrap.min.css"><link rel="stylesheet" href="./assets/css/styles.css">
 <link rel="stylesheet" href="./assets/vendor/iot-effects.css">
 <link rel="stylesheet" href="./assets/css/effects.css">
-<link rel="stylesheet" href="./assets/css/fausto.css"><script type="module" src="./assets/js/app.js"></script>
+<link rel="stylesheet" href="./assets/css/fausto.css"><link rel="stylesheet" href="./assets/css/commercial.css"><script type="module" src="./assets/js/app.js"></script>
 </head>
 <body>
 <div id="slats-effect" aria-hidden="true"></div>
+<div id="crt-effect" aria-hidden="true"></div>
 <div id="cursor-effect" aria-hidden="true"></div>
-<a class="skip-link" href="#main-control">Ir a los controles</a>
+<a class="skip-link" href="#main-control">Ir al contenido</a>
 <svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
 <symbol id="icon-light" viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4M8 13a6 6 0 1 1 8 0c-1 1-1 2-1 3H9c0-1 0-2-1-3M12 1v1M2 10h1m18 0h1M4 3l1 1m14 0 1-1"/></symbol>
 <symbol id="icon-sound" viewBox="0 0 24 24"><path d="m11 4-6 5H2v6h3l6 5zm4 4a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
@@ -24,21 +25,30 @@
 <symbol id="icon-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
 <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2.3 7.6M20 4v6h-6"/></symbol>
 <symbol id="icon-pulse" viewBox="0 0 24 24"><path d="M2 12h5l3-8 4 16 3-8h5"/></symbol>
+<symbol id="icon-picture" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9" r="1.5"/><path d="m3 17 5-4 3 3 4-5 6 6"/></symbol>
+<symbol id="icon-fleet" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 10h18m-12 0v10m4-6h4m-4 3h4"/></symbol>
+<symbol id="icon-catalog" viewBox="0 0 24 24"><path d="m12 3 9 5v8l-9 5-9-5V8l9-5Zm0 10v8m9-13-9 5-9-5"/></symbol>
+<symbol id="icon-account" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/></symbol>
+<symbol id="icon-up" viewBox="0 0 24 24"><path d="M12 19V5m-5 5 5-5 5 5"/></symbol>
+<symbol id="icon-down" viewBox="0 0 24 24"><path d="M12 5v14m-5-5 5 5 5-5"/></symbol>
 </svg>
 <div class="app-shell container-fluid">
 <header class="app-header">
 <div class="brand-group"><button class="theme-button" id="theme-button" data-cursor-target type="button" aria-label="Cambiar paleta de colores" title="Cambiar paleta"><img src="./assets/images/fausto.png" alt="" width="48" height="48"><span id="fausto-effect" aria-hidden="true"></span><span class="visually-hidden" id="theme-name" role="status">Plata sobre negro</span></button><a class="brand" href="./" aria-label="Control IoT, inicio"><span class="rb-warp-shell"><span class="brand-text" data-warp-title>CONTROL / IoT</span><span class="rb-warp" aria-hidden="true"></span></span></a></div>
-<nav class="view-navigation" aria-label="Vistas de la aplicación"><span class="rb-flip-surface rb-flip-nav" data-flip-surface="nav" aria-hidden="true"></span><button type="button" data-cursor-target data-view-target="control" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8c5 0 7 13 3 13l-4-4H9l-4 4C1 20 3 7 8 7ZM7 10v4m-2-2h4m6-1h.1m3 3h.1M10 7V4h4"/></svg>Control</button><button type="button" data-cursor-target data-view-target="monitor"><svg aria-hidden="true"><use href="#icon-pulse"/></svg>Monitoreo</button></nav>
+<nav class="view-navigation" aria-label="Vistas de la aplicación"><span class="rb-flip-surface rb-flip-nav" data-flip-surface="nav" aria-hidden="true"></span><button type="button" data-cursor-target data-view-target="control" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8c5 0 7 13 3 13l-4-4H9l-4 4C1 20 3 7 8 7ZM7 10v4m-2-2h4m6-1h.1m3 3h.1M10 7V4h4"/></svg>Control</button><button type="button" data-cursor-target data-view-target="monitor"><svg aria-hidden="true"><use href="#icon-pulse"/></svg>Monitoreo</button><button type="button" data-view-target="admin" hidden><svg aria-hidden="true"><use href="#icon-fleet"/></svg><span id="admin-nav-label">Administración</span></button><button type="button" data-view-target="showroom" hidden><svg aria-hidden="true"><use href="#icon-catalog"/></svg>Catálogo</button></nav>
 <div class="header-tools">
+<button class="icon-button" id="background-button" type="button" aria-label="Cambiar fondo" title="Cambiar fondo"><svg aria-hidden="true"><use href="#icon-picture"/></svg></button><span class="visually-hidden" id="background-name" role="status"></span>
+<button class="icon-button" id="account-button" type="button" aria-label="Iniciar sesión" title="Iniciar sesión" aria-haspopup="dialog" hidden><svg aria-hidden="true"><use href="#icon-account"/></svg></button>
 <button class="icon-button" id="fullscreen-button" type="button" aria-pressed="false" aria-label="Pantalla completa" title="Pantalla completa"><svg aria-hidden="true"><use href="#icon-fullscreen"/></svg></button></div>
 </header>
 <section class="connection-strip" aria-label="Conexión del vehículo y acceso">
 <div class="connection-item" id="ws-status" aria-live="polite" data-state="connecting"><i class="status-dot" aria-hidden="true"></i><span class="connection-label">WSS<span class="desktop-label"> · eventos</span></span><span data-status-text>Conectando</span></div>
 <div class="connection-item" id="api-status" aria-live="polite" data-state="checking"><i class="status-dot" aria-hidden="true"></i><span class="connection-label">API<span class="desktop-label"> · servidor</span></span><span data-status-text>Comprobando</span></div>
 <div class="connection-item" id="rds-status" aria-live="polite" data-state="unverified"><i class="status-dot" aria-hidden="true"></i><span class="connection-label"><span class="desktop-label">Amazon </span>RDS</span><span data-status-text>Sin verificar</span></div>
-<div class="connection-actions"><button id="session-open" class="access-button" type="button" data-cursor-target data-open-panel="session" aria-controls="session-card" aria-label="Acceso al control">Acceso</button><button class="icon-button refresh-button" id="refresh-button" data-cursor-target type="button" aria-label="Actualizar conexión y sincronizar datos" title="Actualizar conexión"><svg aria-hidden="true"><use href="#icon-refresh"/></svg></button></div>
+<div class="connection-actions" id="connection-actions" hidden><button class="icon-button refresh-button" id="refresh-button" type="button" aria-label="Reintentar conexión" title="Reintentar conexión"><svg aria-hidden="true"><use href="#icon-refresh"/></svg></button></div>
 </section>
-<main id="main-control" class="main-content">
+<div id="unit-switcher" class="unit-switcher" hidden><label for="controlled-unit">Unidad</label><select id="controlled-unit" class="form-select"></select></div>
+<main id="main-control" class="main-content" tabindex="-1">
 <section id="control-view" class="workspace" aria-label="Control del vehículo">
 <div class="pilot-workspace">
 <section class="drive-panel glass-panel" aria-labelledby="vehicle-name">
@@ -53,12 +63,11 @@
 <p class="lever-feedback" id="box-lever-label">Neutral</p><p class="control-help">Suelta para detener</p></div></div>
 <button id="stop-button" data-cursor-ignore class="stop-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>DETENER</span><small>Parada prioritaria</small></button>
 </section>
-<div class="control-dock" role="group" aria-label="Funciones del vehículo"><div id="extra-controls" class="extra-controls" role="group" aria-label="Luces y sonido"><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-light"/></svg><span>Luces</span></button><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-sound"/></svg><span>Sonido</span></button></div><div class="guided-controls" role="group" aria-label="Recorridos y asistente"><button class="dock-button" id="demo-open" data-cursor-target data-open-panel="demo" type="button"><svg aria-hidden="true"><use href="#icon-demo"/></svg><span>Recorridos</span></button>
-<button class="dock-button" id="fausto-open" type="button" aria-haspopup="dialog"><span class="fausto-dock-icon" aria-hidden="true"></span><span>Fausto.IA</span></button></div></div>
+<div class="control-functions"><div class="fausto-launcher"><button id="fausto-open" type="button" aria-haspopup="dialog"><span class="fausto-dock-icon" aria-hidden="true"></span><span>Fausto.IA</span></button></div>
+<div class="control-dock" role="group" aria-label="Funciones del vehículo"><div id="extra-controls" class="extra-controls" role="group" aria-label="Luces y sonido"><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-light"/></svg><span>Luces</span></button><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-sound"/></svg><span>Sonido</span></button></div><div class="guided-controls" role="group" aria-label="Recorridos y otros mandos"><button class="dock-button" id="demo-open" data-cursor-target data-open-panel="demo" type="button"><svg aria-hidden="true"><use href="#icon-demo"/></svg><span>Recorridos</span></button><button class="dock-button" id="commands-open" type="button" aria-haspopup="dialog" hidden><svg aria-hidden="true"><use href="#icon-pulse"/></svg><span>Comandos</span></button></div></div></div>
 </div>
-<aside class="control-sidebar" aria-label="Acceso, recorridos y actividad">
+<aside class="control-sidebar" aria-label="Recorridos y actividad">
 <section id="demo-card" class="glass-panel sidebar-card demo-panel" aria-labelledby="demo-heading"><span class="rb-flip-surface" data-flip-surface="demo" aria-hidden="true"></span><div class="panel-heading"><h2 id="demo-heading">Recorridos guiados</h2></div><label for="demo-select" class="form-label">Elige un recorrido</label><select id="demo-select" class="form-select" disabled><option value="">Cargando recorridos…</option></select><p id="demo-description" class="demo-description">Selecciona una DEMO.</p><div class="demo-actions"><div id="demo-start-effect" data-cursor-target><button id="demo-start" class="btn btn-mint" type="button" disabled><svg aria-hidden="true"><use href="#icon-demo"/></svg>Iniciar DEMO</button></div><button id="demo-cancel" class="btn btn-outline-soft" type="button" disabled>Cancelar</button></div><p id="demo-hold-note">Mantén pulsado para iniciar.</p></section>
-<section id="session-card" class="glass-panel sidebar-card"><span class="rb-flip-surface" data-flip-surface="session" aria-hidden="true"></span><div class="panel-heading"><h2>Acceso al control</h2></div><div class="session-indicator" id="session-indicator" data-state="pending" role="status"><i class="status-dot" aria-hidden="true"></i><span id="session-status">Conectando</span></div><p id="session-feedback" class="session-feedback" role="status">Preparando acceso al vehículo…</p><div class="session-actions"><button id="session-reconnect" class="btn btn-mint" type="button">Reconectar</button></div></section>
 </aside>
 </section>
 <section id="monitor-view" class="monitor-workspace" aria-label="Monitoreo del vehículo" hidden>
@@ -67,9 +76,47 @@
 <section class="history-panel glass-panel" aria-labelledby="history-heading"><span class="monitor-foil" aria-hidden="true"><i></i><i></i><i></i><i></i></span><div class="history-heading"><div><h2 class="rb-warp-shell"><span id="history-heading" data-warp-title>Historial reciente</span><span class="rb-warp" aria-hidden="true"></span></h2></div><span class="history-count"><span id="monitor-count">0</span><span> / 10</span></span></div><p id="monitor-history-status" role="status">Sin consultar</p><div class="history-table-wrap"><table class="history-table"><thead><tr><th scope="col">#</th><th scope="col">Movimiento</th><th scope="col">Fecha</th><th scope="col">Hora</th></tr></thead><tbody id="monitor-history-body"></tbody></table></div><div class="history-pagination"><button id="history-prev" data-cursor-target class="icon-button" type="button" aria-label="Registros anteriores">←</button><span id="history-page">Página 1 de 1</span><button id="history-next" data-cursor-target class="icon-button" type="button" aria-label="Registros siguientes">→</button></div><p id="monitor-zone" class="time-zone">Hora de Ciudad de México · UTC−6</p></section>
 <section id="activity-card" class="glass-panel sidebar-card action-panel" aria-labelledby="action-heading"><div class="panel-heading"><h2 id="action-heading">Confirmaciones de la orden</h2></div><p id="action-message" role="status" aria-live="polite" data-tone="neutral">Activa el acceso para comenzar.</p><div class="evidence-grid"><div><h3>Solicitud</h3><p id="action-request">Sin solicitudes</p></div><div><h3>Respuesta API</h3><p id="action-http">Pendiente</p></div><div><h3>Evento WSS</h3><p id="action-event">Pendiente</p></div></div></section>
 </section>
+<section id="admin-view" class="commercial-view" aria-labelledby="commercial-heading" hidden>
+  <header class="commercial-heading"><div><h1 id="commercial-heading" tabindex="-1">Administración</h1><p id="commercial-identity"></p></div></header>
+  <div class="commercial-layout">
+    <nav id="commercial-menu" class="glass-panel commercial-menu" aria-label="Administración"></nav>
+    <section class="glass-panel commercial-panel" data-tilt-card aria-labelledby="commercial-section-title">
+      <span class="monitor-foil" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <div class="commercial-panel-heading"><h2 id="commercial-section-title" tabindex="-1">Resumen</h2><div id="commercial-actions"></div></div>
+      <p id="commercial-notice" class="commercial-notice" role="status" hidden></p>
+      <div id="commercial-content"></div>
+    </section>
+  </div>
+</section>
+<section id="showroom-view" class="commercial-view" aria-labelledby="showroom-heading" hidden>
+  <header class="commercial-heading"><div><h1 id="showroom-heading" tabindex="-1">Prueba nuestros vehículos IoT</h1><p>Explora los modelos y reserva una unidad de exhibición durante un minuto.</p></div></header>
+  <section class="glass-panel commercial-panel exhibition-control" id="exhibition-session" data-tilt-card aria-labelledby="exhibition-title" hidden>
+    <span class="monitor-foil" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <div class="commercial-panel-heading"><h2 id="exhibition-title" tabindex="-1">Prueba en curso</h2><time id="exhibition-timer" aria-label="Tiempo restante"></time></div>
+    <div id="exhibition-actions" class="commercial-actions"></div>
+  </section>
+  <p id="showroom-notice" class="commercial-notice" role="status" hidden></p>
+  <div id="showroom-models" class="showroom-models"></div>
+</section>
 </main>
 <footer class="app-footer"><div><p id="developer-credit">Desarrollado por Amador Ramírez Jesús Gabriel · 2026</p><p id="academic-credit">Soluciones IoT · Profesor: Víctor Manuel Pinedo Fernández</p></div><a id="api-url" href="https://vehiculo-iot.34-225-114-88.sslip.io/docs" target="_blank" rel="noopener noreferrer">Swagger UI ↗</a></footer>
 </div>
+<dialog class="commercial-dialog" id="commands-dialog" aria-labelledby="commands-heading">
+  <div class="commercial-panel-heading"><h2 id="commands-heading">Otros comandos</h2><button id="commands-close" class="icon-button" type="button" aria-label="Cerrar comandos"><svg aria-hidden="true"><use href="#icon-close"/></svg></button></div>
+  <div id="additional-controls" class="commercial-actions"></div>
+  <button id="commands-stop" class="btn stop-button" type="button">Detener</button>
+</dialog>
+<dialog class="commercial-dialog" id="account-dialog" aria-labelledby="account-heading">
+  <div class="commercial-panel-heading"><h2 id="account-heading">Iniciar sesión</h2><button class="icon-button" type="button" data-close-dialog aria-label="Cerrar"><svg aria-hidden="true"><use href="#icon-close"/></svg></button></div>
+  <form class="commercial-form" id="account-form">
+    <label>Correo electrónico<input class="form-control" type="email" name="correo" required maxlength="254" autocomplete="username" autocapitalize="none" enterkeyhint="next"></label>
+    <label>Contraseña<input class="form-control" type="password" name="clave" required maxlength="128" autocomplete="current-password" enterkeyhint="go"></label>
+    <button class="btn btn-mint" type="submit">Entrar</button>
+  </form>
+  <p id="account-identity" hidden></p>
+  <button id="account-logout" class="btn btn-outline-soft" type="button" hidden>Cerrar sesión</button>
+  <p class="commercial-notice" id="account-feedback" role="status" hidden></p>
+</dialog>
 <dialog id="fausto-dialog" class="fausto-dialog" aria-labelledby="fausto-heading">
   <header class="fausto-heading">
     <div class="fausto-avatar" aria-hidden="true">

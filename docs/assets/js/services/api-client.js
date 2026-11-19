@@ -3,6 +3,7 @@ import { ApiError, httpError, requireId, validateServiceUrl } from '../utils/err
 /** Único punto de acceso HTTP. La clave vive solamente en la memoria de la pestaña. */
 export class ApiClient {
   #key = '';
+  #accountToken = '';
 
   constructor(baseUrl, { timeoutMs = 8000, fetchImpl = globalThis.fetch, automaticVehicleId = null } = {}) {
     this.baseUrl = validateServiceUrl(baseUrl);
@@ -12,6 +13,8 @@ export class ApiClient {
     this.automaticVehicleId = automaticVehicleId;
     this.sessionExpiry = 0;
     this.sessionPromise = null;
+    this.commercial = false;
+    this.channelId = '';
   }
 
   setKey(value) {
@@ -25,11 +28,17 @@ export class ApiClient {
     this.#key = key;
   }
 
-  hasKey() { return this.#key.length > 0; }
+  hasKey() { return (this.commercial ? this.#accountToken : this.#key).length > 0; }
+
+  setAccount(token = '') {
+    this.commercial = true;
+    this.#accountToken = token;
+    this.channelId = '';
+  }
 
   /** La clave maestra permanece en AWS. El navegador recibe una sesión limitada. */
   async connectControl({ force = false } = {}) {
-    if (!this.automaticVehicleId) return;
+    if (this.commercial || !this.automaticVehicleId) return;
     if (!force && this.hasKey() && Date.now() < this.sessionExpiry - 30000) return;
     if (this.sessionPromise) return this.sessionPromise;
     this.sessionPromise = (async () => {
@@ -45,14 +54,15 @@ export class ApiClient {
   }
 
   async request(path, { method = 'GET', body, signal, authorized = false, retried = false,
-    timeoutMs = this.timeoutMs, keepalive = false, adminKey, showFaustoError = false } = {}) {
+    timeoutMs = this.timeoutMs, keepalive = false, adminKey, showFaustoError = false,
+    bearerToken, channelId } = {}) {
     if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')
-        || path.includes('\\') || path.includes('..')) {
+        || path.split('?')[0].includes('\\') || path.split('?')[0].includes('..')) {
       throw new ApiError('La ruta del servicio no es válida.', { code: 'CONFIG' });
     }
-    if (authorized && this.automaticVehicleId) await this.connectControl();
+    if (authorized && !this.commercial && this.automaticVehicleId) await this.connectControl();
     if (authorized && !this.hasKey()) {
-      throw new ApiError('Introduce la clave de control para enviar órdenes.', {
+      throw new ApiError(this.commercial ? 'Inicia sesión para operar tu vehículo.' : 'El acceso automático todavía no está disponible.', {
         status: 401, code: 'AUTH_REQUIRED',
       });
     }
@@ -65,7 +75,12 @@ export class ApiClient {
     try {
       const headers = { Accept: 'application/json' };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
-      if (adminKey !== undefined) headers['X-API-Key'] = adminKey;
+      const token = bearerToken ?? this.#accountToken;
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+        const channel = channelId ?? this.channelId;
+        if (channel) headers['X-IoT-Channel'] = channel;
+      } else if (adminKey !== undefined) headers['X-API-Key'] = adminKey;
       else if (authorized) headers['X-API-Key'] = this.#key;
       const response = await this.fetch(`${this.baseUrl}${path}`, {
         method, headers, body: body === undefined ? undefined : JSON.stringify(body),
@@ -81,13 +96,16 @@ export class ApiClient {
       }
       if (!response.ok) {
         // Un 401 se rechaza antes de ejecutar la orden. Solo ese caso se reintenta.
-        if (response.status === 401 && authorized && this.automaticVehicleId && !retried) {
+        if (response.status === 401 && authorized && !this.commercial && this.automaticVehicleId && !retried) {
           await this.connectControl({ force: true });
           return this.request(path, { method, body, signal, authorized, retried: true, timeoutMs, keepalive, showFaustoError });
         }
         // Solo un JSON de diagnóstico explícito permite atribuir un fallo a RDS.
         const diagnostic = validJson && data !== null && typeof data === 'object'
           && !Array.isArray(data) && typeof data.detail === 'string';
+        if ((this.commercial || path.startsWith('/plataforma/')) && diagnostic && data.detail.length <= 240) {
+          throw new ApiError(data.detail, { status: response.status, code: 'HTTP', diagnostic: true });
+        }
         if (showFaustoError && diagnostic && data.detail.length <= 240 &&
             [413, 422, 424, 429, 502, 504].includes(response.status)) {
           throw new ApiError(data.detail, { status: response.status, code: 'HTTP' });

@@ -1,4 +1,4 @@
-/** Dos vistas y paneles móviles. Reutiliza el mismo DOM, sin duplicar controles. */
+/** Comparte el DOM de las vistas y mueve los paneles al diálogo móvil. */
 export class Navigation {
   constructor(document, { onView = () => {}, onPanel = () => {}, onResize = () => {} } = {}) {
     Object.assign(this, { document, onView, onPanel, onResize });
@@ -32,17 +32,18 @@ export class Navigation {
   }
 
   showView(name) {
-    if (!['control', 'monitor'].includes(name) || name === this.currentView) return;
+    const target = this.document.querySelector(`[data-view-target="${name}"]`);
+    if (!target || target.hidden || name === this.currentView) return;
     this.closePanel();
     this.currentView = name;
     this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: 'nav' }));
     this.document.documentElement.dataset.view = name;
-    this.document.getElementById('control-view').hidden = name !== 'control';
-    this.document.getElementById('monitor-view').hidden = name !== 'monitor';
     for (const button of this.document.querySelectorAll('[data-view-target]')) {
+      this.document.getElementById(`${button.dataset.viewTarget}-view`).hidden = button.dataset.viewTarget !== name;
       if (button.dataset.viewTarget === name) button.setAttribute('aria-current', 'page');
       else button.removeAttribute('aria-current');
     }
+    this.window.scrollTo(0, 0);
     this.onView(name);
     this.onResize();
   }
@@ -64,7 +65,7 @@ export class Navigation {
     card.before(this.placeholder);
     this.currentCard = card;
     this.document.getElementById('sheet-content').append(card);
-    this.document.getElementById('sheet-title').textContent = { session: 'Acceso al control', demo: 'Recorridos guiados', activity: 'Confirmaciones de la última orden' }[name];
+    this.document.getElementById('sheet-title').textContent = { demo: 'Recorridos guiados', activity: 'Confirmaciones de la última orden' }[name];
     trigger?.setAttribute('aria-expanded', 'true');
     this.dialog.showModal();
     this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: name }));

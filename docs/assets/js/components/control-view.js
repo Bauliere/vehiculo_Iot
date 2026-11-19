@@ -1,4 +1,5 @@
 import { commandLabel } from '../domain/catalog.js';
+import { action } from './commercial-ui.js';
 
 /** Solo representación. Los datos remotos se insertan como texto, nunca como HTML. */
 export class ControlView {
@@ -20,8 +21,13 @@ export class ControlView {
   }
   commands(commands, onCommand) {
     const container = this.get('extra-controls');
+    const additional = this.get('additional-controls');
+    const auxiliaries = ['ALTERNAR_LUCES', 'ALTERNAR_SONIDO'];
+    const box = ['SUBIR_CAJA', 'BAJAR_CAJA'];
+    const leverAvailable = box.every(name => commands.some(command => command.nombre === name));
     container.replaceChildren();
-    for (const command of commands.filter(command => ['ALTERNAR_LUCES', 'ALTERNAR_SONIDO'].includes(command.nombre))) {
+    additional.replaceChildren();
+    for (const command of commands.filter(command => auxiliaries.includes(command.nombre))) {
       const button = this.document.createElement('button');
       button.type = 'button';
       button.className = 'extra-control';
@@ -47,6 +53,14 @@ export class ControlView {
       container.append(button);
     }
     if (!container.childElementCount) container.textContent = 'Sin luces ni sonido activos.';
+    for (const command of commands.filter(command => !auxiliaries.includes(command.nombre) &&
+      !(leverAvailable && box.includes(command.nombre)))) {
+      const button = action(commandLabel(command), () => onCommand(command.id_comando));
+      button.dataset.commandId = command.id_comando;
+      button.disabled = true;
+      additional.append(button);
+    }
+    this.get('commands-open').hidden = !additional.childElementCount;
   }
   demos(demos) {
     const select = this.get('demo-select');
@@ -79,6 +93,7 @@ export class ControlView {
   }
   availability({ enabled, pending, demo, hasKey, ready, selectedDemo, uncertain }) {
     for (const button of this.get('extra-controls').querySelectorAll('button')) button.disabled = !enabled || button.dataset.placeholder === 'true';
+    for (const button of this.get('additional-controls').children) button.disabled = !enabled;
     const demoDisabled = !enabled || pending || !selectedDemo;
     if (this.demoButton) this.demoButton.setDisabled(demoDisabled);
     else this.get('demo-start').disabled = demoDisabled;
@@ -86,5 +101,6 @@ export class ControlView {
     this.get('demo-select').disabled = !ready || demo || pending;
     // DETENER sigue disponible durante solicitudes, DEMO y fallos de conectividad.
     this.get('stop-button').disabled = !hasKey || !ready;
+    this.get('commands-stop').disabled = !hasKey || !ready;
   }
 }

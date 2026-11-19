@@ -26,6 +26,8 @@ export class FaustoChat {
     this.input = this.get('input');
     this.mic = this.get('mic');
     this.messages = this.get('messages');
+    this.welcome = this.messages.firstElementChild.cloneNode(true);
+    this.generation = 0;
     this.change = null;
     this.run = null;
     this.query = null;
@@ -38,6 +40,22 @@ export class FaustoChat {
   }
 
   get(id) { return this.document.getElementById('fausto-' + id); }
+
+  switchVehicle(vehicleId) {
+    this.generation += 1;
+    this.query?.abort();
+    this.query = null;
+    this.voice.discard();
+    this.dialog.close();
+    this.vehicleId = vehicleId;
+    this.messages.replaceChildren(this.welcome.cloneNode(true));
+    this.input.value = '';
+    this.stopping = false;
+    this.status('');
+    this.renderChange(null);
+    this.setRun(null);
+    this.updateInput();
+  }
 
   start() {
     this.openButton.addEventListener('click', () => {
@@ -192,9 +210,11 @@ export class FaustoChat {
         : error.message;
       this.status(explanation);
     } finally {
-      this.query = null;
-      this.setThinking(query.signal.aborted ? null : result ? 'ready' : 'error');
-      this.updateInput();
+      if (this.query === query) {
+        this.query = null;
+        this.setThinking(query.signal.aborted ? null : result ? 'ready' : 'error');
+        this.updateInput();
+      }
     }
     if (!result || query.signal.aborted || !this.dialog.open) return;
     if (!source.texto && result.transcripcion) this.addMessage(result.transcripcion, true);
@@ -296,6 +316,7 @@ export class FaustoChat {
     if (this.stopping) return;
     this.stopping = true;
     const planId = this.run;
+    const generation = this.generation;
     this.query?.abort();
     this.voice.discard();
     this.status('Solicitando detención…');
@@ -306,11 +327,11 @@ export class FaustoChat {
       } else if (!await this.stop()) {
         throw new Error('Detención sin confirmar');
       }
-      this.status('Detención confirmada por la API.');
+      if (this.generation === generation) this.status('Detención confirmada por la API.');
     } catch {
-      this.status('Detención sin confirmar. Revisa la conexión e inténtalo de nuevo.');
+      if (this.generation === generation) this.status('Detención sin confirmar. Revisa la conexión e inténtalo de nuevo.');
     } finally {
-      this.stopping = false;
+      if (this.generation === generation) this.stopping = false;
     }
   }
 

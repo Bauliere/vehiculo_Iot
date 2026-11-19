@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 class ServidorControl(SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
     # Windows puede registrar .js como text/plain. Los módulos del navegador
     # necesitan un tipo JavaScript válido para poder ejecutarse.
     extensions_map = {
@@ -28,12 +29,16 @@ class ServidorControl(SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+class ServidorLocal(ThreadingHTTPServer):
+    request_queue_size = 64
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=5500)
     args = parser.parse_args()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), ServidorControl)
+        server = ServidorLocal(("127.0.0.1", args.port), ServidorControl)
     except OSError as error:
         parser.exit(1, f"No se pudo abrir el puerto {args.port}. Cierra el servidor anterior con Ctrl+C.\n{error}\n")
     print(f"Control IoT: http://127.0.0.1:{args.port}/", flush=True)

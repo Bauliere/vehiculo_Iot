@@ -31,10 +31,10 @@ export class Catalog {
       requireId(command.id_vehiculo, 'ID del vehículo');
       if (typeof command.nombre !== 'string' || !command.nombre.trim()
           || !Number.isInteger(command.codigo) || command.codigo < -2147483648
-          || command.codigo > 2147483647 || ![0, 1].includes(command.activo)) this.invalid();
+          || command.codigo > 2147483647 || ![0, 1, false, true].includes(command.activo)) this.invalid();
       if (identifiers.has(command.id_comando)) this.invalid();
       identifiers.add(command.id_comando);
-      if (command.activo !== 1) continue;
+      if (!command.activo) continue;
       const name = command.nombre.trim().toUpperCase();
       if (names.has(name)) this.invalid();
       names.add(name);

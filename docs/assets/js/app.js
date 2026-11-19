@@ -16,6 +16,9 @@ import { ControlFeedback } from './components/control-feedback.js';
 import { bindHoldGesture } from './components/hold-gesture.js';
 import { PilotFullscreen } from './components/fullscreen.js';
 import { FaustoChat } from './components/fausto-chat.js';
+import { CommercialView } from './components/commercial-view.js';
+import { Showroom } from './components/showroom.js';
+import { notice } from './components/commercial-ui.js';
 
 const DEMO_HOLD_MS = 900;
 
@@ -23,20 +26,23 @@ const DEMO_HOLD_MS = 900;
 class ControlApplication {
   constructor() {
     this.api = new ApiClient(CONFIG.apiBaseUrl, { timeoutMs: CONFIG.requestTimeoutMs, automaticVehicleId: CONFIG.vehicleId });
-    this.state = new ControlState();
+    this.vehicleId = null;
+    this.mode = 'pending';
+    this.account = null;
+    this.units = [];
     this.view = new ControlView(document);
     this.theme = new ThemeManager(document);
-    this.feedback = new ControlFeedback(document, CONFIG.vehicleId);
     this.sessionLoading = false;
     this.monitorView = new MonitorView(document);
     this.historyResize = new ResizeObserver(() => this.resizeMonitor());
-    this.monitor = new MonitorController(this.api, CONFIG.vehicleId, {
-      onChange: value => this.monitorView.render(value),
-    });
     this.navigation = new Navigation(document, {
       onView: name => {
         if (this.joystick?.active || this.lever?.active) void this.controller.stop();
-        if (name === 'monitor') void this.monitor.enter();
+        if (name === 'monitor' && this.vehicleId) void this.monitor.enter();
+        if (name === 'admin') void this.commercial.open();
+        else this.commercial.cancel();
+        if (name === 'showroom' && this.mode === 'commercial') void this.showroom.load();
+        this.syncUnits();
       },
       onPanel: () => {
         if (this.joystick?.active || this.lever?.active) void this.controller.stop();
@@ -45,19 +51,14 @@ class ControlApplication {
     });
     this.catalog = new Catalog([]);
     this.ready = false;
-    this.loading = false;
     this.apiAvailable = false;
     this.wsConnected = false;
     this.demoSelection = 0;
     this.demoGeneration = 0;
     this.sessionNotice = '';
-    this.controller = new ControlController(this.api, CONFIG.vehicleId, this.catalog, this.state, {
-      canOperate: () => this.ready && this.apiAvailable && this.wsConnected && !this.state.value.authError,
-      onNeutral: () => { this.joystick?.reset(); this.lever?.reset(); },
-    });
     this.fullscreen = new PilotFullscreen(document, this.navigation);
-    this.fausto = new FaustoChat(document, this.api, CONFIG.vehicleId, {
-      canExecute: () => this.ready && this.wsConnected && this.apiAvailable && this.api.hasKey() &&
+    this.fausto = new FaustoChat(document, this.api, null, {
+      canExecute: () => this.ready && this.canSend() && this.apiAvailable && this.api.hasKey() &&
         !this.state.value.authError && this.state.value.phase === 'idle' &&
         !this.controller.demoId && !this.controller.pending && !this.controller.inFlight,
       onOpen: () => {
@@ -90,11 +91,18 @@ class ControlApplication {
       },
       onRelease: () => void this.controller.releaseControl(),
     });
-    this.state.subscribe(value => { this.view.render(value); this.updateControls(); });
-    this.socket = new SocketClient(socketUrl(), {
-      onStatus: status => this.socketStatus(status),
-      onEvent: event => { this.controller.handleEvent(event); this.monitor.handleEvent(event); this.feedback.handleEvent(event); this.fausto.handleEvent(event); this.updateControls(); },
-      onError: message => { this.state.update({ message, tone: 'error' }); },
+    this.commercial = new CommercialView(document, this.api, {
+      onSelect: id => this.chooseUnit(id),
+      onUnitChange: () => this.fetchUnits(),
+      onDemosChange: id => { if (id === this.vehicleId) void this.loadCatalog(); },
+      onExpired: () => this.endAccount('La sesión terminó. Vuelve a iniciar sesión.'),
+    });
+    this.showroom = new Showroom(document, this.api, (id, token, options) => {
+      const socket = this.makeSocket(id, token, {
+        ...options, onStatus: status => { this.showSocketStatus(status); options.onStatus(status); },
+      });
+      socket.start();
+      return socket;
     });
     this.health = new HealthService(this.api, {
       intervalMs: CONFIG.healthIntervalMs,
@@ -109,8 +117,8 @@ class ControlApplication {
     this.fausto.start();
     this.startEffects();
     this.historyResize.observe(this.view.get('monitor-history-body').closest('.history-table-wrap'));
-    this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor.refresh());
-    this.view.get('session-reconnect').addEventListener('click', () => void this.connectSession(true));
+    this.view.get('monitor-refresh').hidden = true;
+    this.view.get('monitor-refresh').addEventListener('click', () => void this.monitor?.refresh());
     this.view.text('developer-credit', `Desarrollado por ${CONFIG.author} · ${CONFIG.year}`);
     this.view.text('academic-credit', `${CONFIG.subject} · Profesor: ${CONFIG.teacher}`);
     const url = this.view.get('api-url');
@@ -118,14 +126,18 @@ class ControlApplication {
     url.href = `${CONFIG.apiBaseUrl}/docs`;
     const stop = () => void (this.fausto.run ? this.fausto.halt() : this.controller.stop());
     this.view.get('stop-button').addEventListener('click', stop);
+    this.view.get('commands-stop').addEventListener('click', stop);
+    const commandDialog = this.view.get('commands-dialog');
+    this.view.get('commands-open').addEventListener('click', () => {
+      if (this.joystick.active || this.lever.active) void this.controller.stop();
+      commandDialog.showModal();
+    });
+    this.view.get('commands-close').addEventListener('click', () => commandDialog.close());
     this.view.get('demo-cancel').addEventListener('click', stop);
     this.view.get('demo-select').addEventListener('change', () => void this.selectDemo());
-    this.view.get('refresh-button').addEventListener('click', () => {
-      void this.health.check();
-      void this.monitor.refresh();
-      void this.connectSession(true);
-      if (!this.ready) void this.loadCatalog();
-    });
+    this.view.get('refresh-button').addEventListener('click', () => void this.retry());
+    this.view.get('controlled-unit').addEventListener('change', event => this.chooseUnit(Number(event.target.value)));
+    this.startAccountDialog();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.connectionLost();
       else void this.health.check();
@@ -133,24 +145,281 @@ class ControlApplication {
     window.addEventListener('blur', () => this.connectionLost());
     window.addEventListener('pagehide', () => {
       this.connectionLost();
-      this.socket.stop();
+      this.socket?.stop();
+      void this.showroom.finish('', true);
       this.health.stop();
-      this.monitor.stop();
-      this.feedback.stop();
+      this.monitor?.stop();
+      this.feedback?.stop();
     });
     window.addEventListener('pageshow', event => {
-      if (event.persisted) { this.socket.start(); this.health.start(); void this.monitor.start(); }
+      if (event.persisted) { this.socket?.start(); this.health.start(); void this.monitor?.start(); }
     });
-    this.socket.start();
     this.health.start();
-    void this.loadCatalog();
-    void this.monitor.start();
-    void this.connectSession();
+    void this.detectMode();
   }
 
   connectionLost() {
     if (this.fausto.run) this.fausto.disconnect();
-    else this.controller.connectionLost();
+    else this.controller?.connectionLost();
+  }
+
+  async detectMode() {
+    if (this.detecting || ['legacy', 'commercial'].includes(this.mode)) return;
+    this.detecting = true;
+    try {
+      const config = await this.api.request('/plataforma/config');
+      if (typeof config?.activa !== 'boolean') throw new Error('El servidor no identificó el modo de la plataforma.');
+      this.setMode(config.activa ? 'commercial' : 'legacy');
+    } catch (error) {
+      if (error.status === 404) this.setMode('legacy');
+      else {
+        this.setMode('offline');
+        notice(this.view.get('showroom-notice'), error.message, true);
+      }
+    } finally {
+      this.detecting = false;
+      this.connectionActions();
+    }
+  }
+
+  setMode(mode) {
+    const previousView = this.navigation.currentView;
+    this.mode = mode;
+    document.documentElement.toggleAttribute('data-commercial', mode !== 'legacy');
+    this.navButton('showroom').hidden = mode === 'legacy';
+    this.view.get('account-button').hidden = mode !== 'commercial';
+    if (mode === 'legacy') {
+      this.syncUnits();
+      this.navigation.showView('control');
+      this.selectVehicle(CONFIG.vehicleId);
+      void this.connectSession();
+    } else {
+      this.api.setAccount();
+      this.syncUnits();
+      this.navigation.showView('showroom');
+      if (this.mode === 'commercial' && previousView === 'showroom') void this.showroom.load();
+      this.showSocketStatus('disconnected');
+    }
+  }
+
+  navButton(name) { return document.querySelector(`[data-view-target="${name}"]`); }
+
+  makeSocket(id, token, options) {
+    return new SocketClient(socketUrl({ ...CONFIG, vehicleId: id }), {
+      protocols: token ? ['iot.v1', `auth.${token}`] : undefined, ...options,
+    });
+  }
+
+  canSend() { return this.wsConnected && (this.mode === 'legacy' || (this.deviceConnected && this.api.channelId)); }
+
+  selectVehicle(id) {
+    if (this.vehicleId === id) return;
+    this.connectionLost();
+    this.unsubscribe?.();
+    this.monitor?.stop();
+    this.feedback?.stop();
+    const oldSocket = this.socket;
+    this.socket = null;
+    oldSocket?.stop();
+    this.catalogRead?.abort();
+    this.demoRead?.abort();
+    this.demoGeneration += 1;
+    this.api.channelId = '';
+    this.ready = false;
+    this.deviceConnected = false;
+    this.wsConnected = false;
+    this.view.get('commands-dialog').close();
+    this.demoSelection = 0;
+    this.vehicleId = id;
+    this.fausto.switchVehicle(id);
+    if (!id) { this.showSocketStatus('disconnected'); return; }
+    this.catalog = new Catalog([]);
+    this.state = new ControlState();
+    this.view.demos([]);
+    this.view.commands([], () => {});
+    this.view.vehicle({ nombre: this.units.find(unit => unit.id_vehiculo === id)?.nombre ?? 'Máquina de carga', id_vehiculo: id });
+    this.feedback = new ControlFeedback(document, id);
+    this.monitor = new MonitorController(this.api, id, {
+      onChange: value => {
+        this.monitorView.render(value);
+        this.view.get('monitor-refresh').hidden = value.stateStatus !== 'error' && value.historyStatus !== 'error';
+      },
+    });
+    const control = new ControlController(this.api, id, this.catalog, this.state, {
+      canOperate: () => this.controller === control && this.ready && this.apiAvailable && this.canSend() && !this.state.value.authError,
+      onNeutral: () => { if (this.controller === control) { this.joystick.reset(); this.lever.reset(); } },
+    });
+    this.controller = control;
+    this.unsubscribe = this.state.subscribe(value => { this.view.render(value); this.updateControls(); });
+    const socket = this.makeSocket(id, this.account?.token, {
+      onStatus: status => { if (socket === this.socket) this.socketStatus(status); },
+      onEvent: event => {
+        if (socket !== this.socket || event.id_vehiculo !== id) return;
+        if (event.tipo === 'canal_control') {
+          this.api.channelId = typeof event.canal === 'string' ? event.canal : '';
+          this.deviceConnected = event.dispositivo === true;
+        } else if (event.tipo === 'dispositivo') {
+          this.deviceConnected = event.conectado === true;
+          if (!this.deviceConnected) this.connectionLost();
+        } else {
+          control.handleEvent(event);
+          this.monitor.handleEvent(event);
+          this.feedback.handleEvent(event);
+          this.fausto.handleEvent(event);
+        }
+        this.updateControls();
+      },
+      onError: message => { if (socket === this.socket) this.state.update({ message, tone: 'error' }); },
+      onPolicy: () => {
+        if (socket === this.socket && this.account) {
+          this.ready = false;
+          void this.fetchUnits().then(() => this.loadCatalog());
+        }
+      },
+    });
+    this.socket = socket;
+    this.monitor.publish({ socket: 'connecting' });
+    socket.start();
+    void this.loadCatalog();
+    void this.monitor.start();
+    this.syncUnits();
+  }
+
+  chooseUnit(id) {
+    if (!this.units.some(unit => unit.id_vehiculo === id)) return;
+    this.selectVehicle(id);
+    this.navigation.showView('control');
+  }
+
+  syncUnits() {
+    const pilot = this.mode === 'legacy' || (this.mode === 'commercial' && this.units.length > 0);
+    this.navButton('admin').hidden = !this.account;
+    this.navButton('control').hidden = !pilot;
+    this.navButton('monitor').hidden = !pilot;
+    this.view.get('fullscreen-button').hidden = !pilot;
+    this.view.text('admin-nav-label', this.account?.cuenta.rol === 'usuario' ? 'Mis vehículos' : 'Administración');
+    const switcher = this.view.get('unit-switcher');
+    switcher.hidden = this.mode !== 'commercial' || !this.units.length || !['control', 'monitor'].includes(this.navigation.currentView);
+    const select = this.view.get('controlled-unit');
+    select.replaceChildren(...this.units.map(unit => new Option(unit.nombre, unit.id_vehiculo)));
+    select.value = this.vehicleId ?? '';
+    this.connectionActions();
+  }
+
+  async fetchUnits() {
+    const account = this.account;
+    if (!account || this.fetchingUnits === account) return;
+    this.fetchingUnits = account;
+    try {
+      const rows = [];
+      let page;
+      do {
+        page = await this.api.request(`/plataforma/mis-unidades?limit=100&offset=${rows.length}`);
+        if (this.account !== account) return;
+        rows.push(...page);
+      } while (page.length === 100);
+      this.units = rows;
+      if (!rows.some(unit => unit.id_vehiculo === this.vehicleId)) this.selectVehicle(rows[0]?.id_vehiculo ?? null);
+      this.syncUnits();
+      if (!this.vehicleId && ['control', 'monitor'].includes(this.navigation.currentView)) this.navigation.showView('admin');
+      if (this.vehicleId && this.socket && !this.socket.running) this.socket.start();
+    } catch (error) {
+      if (this.account !== account) return;
+      if (error.status === 401) this.endAccount('La sesión terminó. Vuelve a iniciar sesión.');
+      else notice(this.view.get('commercial-notice'), error.message, true);
+    } finally { if (this.fetchingUnits === account) this.fetchingUnits = null; }
+  }
+
+  startAccountDialog() {
+    const dialog = this.view.get('account-dialog');
+    const form = this.view.get('account-form');
+    const submit = form.querySelector('[type="submit"]');
+    const logout = this.view.get('account-logout');
+    const message = this.view.get('account-feedback');
+    this.view.get('account-button').addEventListener('click', () => {
+      if (this.showroom.session || this.showroom.reserving) {
+        notice(this.view.get('showroom-notice'), 'Finaliza la prueba antes de iniciar sesión.', true);
+        return;
+      }
+      notice(message, '');
+      dialog.showModal();
+    });
+    dialog.querySelector('[data-close-dialog]').addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      submit.disabled = true;
+      notice(message, 'Iniciando sesión…');
+      try {
+        const body = Object.fromEntries(new FormData(form));
+        this.account = await this.api.request('/plataforma/sesion', { method: 'POST', body });
+        this.api.setAccount(this.account.token);
+        this.commercial.setAccount(this.account.cuenta);
+        this.syncAccountDialog();
+        this.syncUnits();
+        this.navigation.showView('admin');
+        void this.fetchUnits();
+        this.expires = setTimeout(() => this.endAccount('La sesión terminó. Vuelve a iniciar sesión.'),
+          Math.max(0, Date.parse(this.account.vence) - Date.now()));
+        form.reset();
+        dialog.close();
+        this.view.get('commercial-heading').focus();
+      } catch (error) { notice(message, error.message, true); }
+      finally { submit.disabled = false; }
+    });
+    logout.addEventListener('click', async () => {
+      logout.disabled = true;
+      try {
+        await this.api.request('/plataforma/sesion', { method: 'DELETE' });
+        this.endAccount('Sesión cerrada.');
+        dialog.close();
+      } catch (error) {
+        if (error.status === 401) this.endAccount('La sesión terminó.');
+        else notice(message, error.message, true);
+      } finally { logout.disabled = false; }
+    });
+  }
+
+  syncAccountDialog() {
+    const signedIn = Boolean(this.account);
+    const label = signedIn ? 'Cuenta' : 'Iniciar sesión';
+    this.view.get('account-button').setAttribute('aria-label', label);
+    this.view.get('account-button').title = label;
+    this.view.text('account-heading', label);
+    this.view.get('account-form').hidden = signedIn;
+    this.view.get('account-logout').hidden = !signedIn;
+    this.view.get('account-identity').hidden = !signedIn;
+    this.view.text('account-identity', this.account?.cuenta.nombre ?? '');
+  }
+
+  endAccount(message) {
+    clearTimeout(this.expires);
+    this.selectVehicle(null);
+    this.account = null;
+    this.units = [];
+    this.api.setAccount();
+    this.commercial.setAccount(null);
+    this.syncAccountDialog();
+    this.syncUnits();
+    this.navigation.showView('showroom');
+    void this.showroom.load(message);
+  }
+
+  async retry() {
+    void this.health.check();
+    if (this.mode === 'pending' || this.mode === 'offline') { await this.detectMode(); return; }
+    if (this.mode === 'legacy') void this.connectSession(true);
+    this.socket?.retry();
+    if (this.vehicleId) {
+      if (!this.ready) void this.loadCatalog();
+      if (this.navigation.currentView === 'monitor') void this.monitor.refresh();
+    } else if (this.account) void this.fetchUnits();
+    else if (!this.showroom.session) void this.showroom.load();
+  }
+
+  connectionActions() {
+    const failed = this.mode === 'offline' || (this.mode !== 'pending' && !this.apiAvailable)
+      || (this.vehicleId && (!this.wsConnected || Boolean(this.sessionNotice) || Boolean(this.state?.value.authError)));
+    this.view.get('connection-actions').hidden = !failed;
   }
 
   startEffects() {
@@ -171,7 +440,7 @@ class ControlApplication {
   }
 
   async connectSession(force = false) {
-    if (this.sessionLoading) return;
+    if (this.mode !== 'legacy' || this.sessionLoading) return;
     this.sessionLoading = true;
     this.sessionNotice = '';
     this.updateControls();
@@ -179,9 +448,8 @@ class ControlApplication {
       await this.api.connectControl({ force });
       this.state.update({ authError: null });
     } catch (error) {
-      this.sessionNotice = 'Acceso automático no disponible. Pulsa Actualizar conexión.';
-      this.view.text('session-feedback', error.status === 404 || error.status === 403
-        ? 'Activa el control público en la instancia con la guía incluida.' : error.message);
+      this.sessionNotice = error.status === 403 || error.status === 404
+        ? 'El acceso automático está deshabilitado en la instancia' : 'Acceso automático no disponible';
     } finally {
       this.sessionLoading = false;
       this.updateControls();
@@ -201,21 +469,25 @@ class ControlApplication {
   }
 
   async loadCatalog() {
-    if (this.loading) return;
-    this.loading = true;
+    const id = this.vehicleId;
+    if (!id || (this.catalogRead && !this.catalogRead.signal.aborted)) return;
+    const job = new AbortController();
+    this.catalogRead = job;
     try {
-      const detail = await this.api.getVehicle(CONFIG.vehicleId);
-      if (detail?.vehiculo?.id_vehiculo !== CONFIG.vehicleId || detail.vehiculo.activo !== 1 ||
+      const detail = await this.api.getVehicle(id, { signal: job.signal });
+      if (job.signal.aborted) return;
+      if (detail?.vehiculo?.id_vehiculo !== id || ![1, true].includes(detail.vehiculo.activo) ||
         typeof detail.vehiculo.nombre !== 'string' || !Array.isArray(detail.demos) ||
-        !Array.isArray(detail.comandos) || detail.comandos.some(c => c.id_vehiculo !== CONFIG.vehicleId)) {
+        !Array.isArray(detail.comandos) || detail.comandos.some(c => c.id_vehiculo !== id)) {
         throw new Error('La API no devolvió un vehículo activo con un catálogo válido.');
       }
       const catalog = new Catalog(detail.comandos);
       if (!catalog.direction('stop')) throw new Error('Falta DETENER activo en el catálogo. Revisa Swagger.');
       this.catalog = catalog;
       this.controller.catalog = catalog;
-      this.demos = detail.demos.filter(d => d.activo === 1 && Number.isInteger(d.id_demo) && d.id_demo > 0 && d.id_vehiculo === CONFIG.vehicleId && typeof d.nombre === 'string');
+      this.demos = detail.demos.filter(d => [1, true].includes(d.activo) && Number.isInteger(d.id_demo) && d.id_demo > 0 && d.id_vehiculo === id && typeof d.nombre === 'string');
       this.view.vehicle(detail.vehiculo);
+      this.view.text('monitor-vehicle', detail.vehiculo.nombre);
       this.view.commands(catalog.extras(), id => this.controller.requestCommand(id));
       this.feedback.renderAux();
       const previousDemo = Number(this.view.get('demo-select').value);
@@ -225,26 +497,32 @@ class ControlApplication {
         : this.demos.some(demo => demo.id_demo === 1) ? 1 : this.demos[0]?.id_demo;
       this.view.get('demo-select').value = nextDemo ? String(nextDemo) : '';
       void this.selectDemo();
-      this.state.update({ message: 'Vehículo listo.', tone: 'neutral' });
+      this.state.update({ message: 'Vehículo listo.', tone: 'neutral', authError: null });
     } catch (error) {
-      this.state.update({ message: error.message, tone: 'error' });
+      if (!job.signal.aborted) this.state.update({ message: error.message, tone: 'error' });
     } finally {
-      this.loading = false;
-      this.updateControls();
+      if (this.catalogRead === job) {
+        this.catalogRead = null;
+        this.updateControls();
+      }
     }
   }
 
   async selectDemo() {
+    if (!this.vehicleId) return;
     document.dispatchEvent(new Event('iot:cancel-hold'));
+    this.demoRead?.abort();
     const generation = ++this.demoGeneration;
     const id = Number(this.view.get('demo-select').value);
     this.demoSelection = 0;
     this.controller.selectedDemoId = id || null;
     this.updateControls();
     if (!id) { this.view.text('demo-description', 'Elige una DEMO del catálogo para ver sus pasos.'); return; }
+    const job = new AbortController();
+    this.demoRead = job;
     this.view.text('demo-description', 'Consultando secuencia…');
     try {
-      const steps = await this.api.getDemoSteps(CONFIG.vehicleId, id);
+      const steps = await this.api.getDemoSteps(this.vehicleId, id, { signal: job.signal });
       if (generation !== this.demoGeneration) return;
       if (!Array.isArray(steps) || steps.some(step => !Number.isInteger(step.orden) || !Number.isInteger(step.duracion_ms) || !Number.isInteger(step.pausa_ms))) throw new Error('La secuencia recibida no es válida.');
       if (!steps.length) { this.view.text('demo-description', 'Esta DEMO no tiene pasos. Complétala desde administración.'); return; }
@@ -253,20 +531,31 @@ class ControlApplication {
       this.view.text('demo-description', `${steps.length} pasos · ${seconds.toLocaleString('es-MX')} s`);
     } catch (error) {
       if (generation === this.demoGeneration) this.view.text('demo-description', error.message);
-    } finally { this.updateControls(); }
+    } finally {
+      if (this.demoRead === job) this.demoRead = null;
+      this.updateControls();
+    }
+  }
+
+  showSocketStatus(status) {
+    const states = { connected: ['online', 'En línea'], connecting: ['connecting', 'Conectando'], reconnecting: ['connecting', 'Reconectando'], disconnected: ['offline', 'Desconectado'] };
+    this.view.status('ws-status', ...states[status]);
   }
 
   socketStatus(status) {
     this.monitor.socketStatus(status);
     const wasConnected = this.wsConnected;
     this.wsConnected = status === 'connected';
-    const states = { connected: ['online', 'En línea'], connecting: ['connecting', 'Conectando'], reconnecting: ['connecting', 'Reconectando'], disconnected: ['offline', 'Desconectado'] };
-    this.view.status('ws-status', ...states[status]);
+    this.showSocketStatus(status);
     if (wasConnected && !this.wsConnected) {
       this.feedback.resetAux();
       this.connectionLost();
     }
-    if (!this.wsConnected) this.feedback.neutral();
+    if (!this.wsConnected) {
+      this.api.channelId = '';
+      this.deviceConnected = false;
+      this.feedback.neutral();
+    }
     this.updateControls();
   }
 
@@ -278,40 +567,38 @@ class ControlApplication {
     this.view.status('api-status', status.api, apiLabels[status.api]);
     this.view.status('rds-status', status.rds, rdsLabels[status.rds]);
     if (wasAvailable && !this.apiAvailable) this.connectionLost();
-    if (this.apiAvailable && !this.ready) void this.loadCatalog();
-    if (this.apiAvailable && !wasAvailable && !this.api.hasKey()) void this.connectSession();
+    if (this.apiAvailable && this.vehicleId && !this.ready) void this.loadCatalog();
+    if (this.apiAvailable && !wasAvailable) {
+      if (this.mode === 'legacy' && !this.api.hasKey()) void this.connectSession();
+      else if (this.mode === 'offline') void this.detectMode();
+    }
     this.updateControls();
   }
 
   updateControls() {
+    this.connectionActions();
+    if (!this.vehicleId || this.controller?.vehicleId !== this.vehicleId) return;
     const phase = this.state.value.phase;
     const demo = this.controller.demoId !== null;
     const uncertain = phase === 'uncertain';
     const authError = this.state.value.authError;
-    const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected &&
+    const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.canSend() &&
       !demo && !this.fausto.run && !uncertain && phase !== 'stopping';
     const hasDirection = ['forward', 'backward', 'left', 'right'].some(name => this.catalog.direction(name));
     const crossingNeutral = this.controller.keepGestureDuringStop && phase === 'stopping' &&
-      this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.wsConnected && !demo;
+      this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.canSend() && !demo;
     this.joystick.setEnabled((enabled || crossingNeutral) && hasDirection);
     const boxCommands = ['SUBIR_CAJA', 'BAJAR_CAJA'].every(name => this.catalog.all().some(command => command.nombre === name));
     this.lever?.setEnabled((enabled || crossingNeutral) && boxCommands);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
       hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain });
-    const accessState = authError ? 'invalid' : !this.apiAvailable || !this.wsConnected ? 'offline'
-      : this.api.hasKey() ? 'valid' : 'pending';
-    const labels = { invalid: 'Sin permiso', offline: 'Sin conexión', valid: 'Disponible', pending: 'Conectando' };
-    this.view.get('session-indicator').dataset.state = accessState;
-    this.view.text('session-status', labels[accessState]);
-    this.view.get('session-reconnect').disabled = this.sessionLoading;
-    if (!this.sessionNotice) this.view.text('session-feedback', this.sessionLoading ? 'Conectando automáticamente…'
-      : this.api.hasKey() ? 'Sesión de control lista.' : 'No hay sesión de control disponible.');
     const notice = uncertain ? 'Detención sin confirmar · revisa Monitoreo'
-      : authError || this.sessionNotice ? 'Acceso no disponible · actualiza la conexión'
+      : authError ? 'Sin permiso para operar' : this.sessionNotice ? this.sessionNotice
         : phase === 'stopping' ? 'Deteniendo…'
           : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
             : !this.api.hasKey() ? 'Preparando acceso…'
-              : !this.ready ? 'Mandos no disponibles'
+              : this.mode === 'commercial' && !this.deviceConnected ? 'Dispositivo desconectado'
+                : !this.ready ? 'Mandos no disponibles'
                 : this.fausto.run ? 'Fausto.IA en curso'
                   : demo ? 'DEMO en curso' : 'Listo para conducir';
     this.view.text('control-notice', notice);
