@@ -54,6 +54,26 @@
 .unit-switcher select { width: min(100%, 25rem); min-width: 0; }
 .unit-switcher label { flex-shrink: 0; }
 
+.main-content:has(> .unit-access:not([hidden])) { flex-direction: column; gap: 8px; }
+.unit-access {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: .875rem;
+}
+.unit-access p { flex: 1 1 12rem; margin: 0; }
+.unit-access .btn { flex: 0 0 auto; min-height: 44px; }
+html[data-unit-locked] #monitor-view,
+html[data-unit-locked] .control-notice { display: none; }
+html[data-unit-locked] #control-view :is(.control-sidebar, .control-functions) { opacity: .65; }
+
 html:is([data-view="admin"], [data-view="showroom"]) { height: auto; overflow: auto; }
 html:is([data-view="admin"], [data-view="showroom"]) body { height: auto; min-height: 100dvh; overflow: visible; }
 html:is([data-view="admin"], [data-view="showroom"]) .app-shell { height: auto; min-height: 100dvh; }

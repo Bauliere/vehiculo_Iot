@@ -1,7 +1,7 @@
 /** Comparte el DOM de las vistas y mueve los paneles al diálogo móvil. */
 export class Navigation {
-  constructor(document, { onView = () => {}, onPanel = () => {}, onResize = () => {} } = {}) {
-    Object.assign(this, { document, onView, onPanel, onResize });
+  constructor(document, { beforeView = () => true, onView = () => {}, onPanel = () => {}, onResize = () => {} } = {}) {
+    Object.assign(this, { document, beforeView, onView, onPanel, onResize });
     this.window = document.defaultView;
     this.mobile = this.window.matchMedia('(max-width: 900px), (max-height: 500px) and (max-width: 1200px), (max-height: 500px) and (pointer: coarse)');
     this.shortDesktop = this.window.matchMedia('(max-height: 650px)');
@@ -33,7 +33,7 @@ export class Navigation {
 
   showView(name) {
     const target = this.document.querySelector(`[data-view-target="${name}"]`);
-    if (!target || target.hidden || name === this.currentView) return;
+    if (!target || target.hidden || name === this.currentView || !this.beforeView(name, this.currentView)) return;
     this.closePanel();
     this.currentView = name;
     this.document.dispatchEvent(new CustomEvent('iot:flip', { detail: 'nav' }));

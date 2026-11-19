@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-theme="silver" data-view="control" data-background="crt">
+<html lang="es" data-theme="silver" data-view="control" data-background="crt" data-unit-locked>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"><meta name="theme-color" content="#0a0a0c">
 <meta name="description" content="Control, monitoreo y administración de vehículos IoT.">
@@ -49,10 +49,14 @@
 </section>
 <div id="unit-switcher" class="unit-switcher" hidden><label for="controlled-unit">Unidad</label><select id="controlled-unit" class="form-select"></select></div>
 <main id="main-control" class="main-content" tabindex="-1">
-<section id="control-view" class="workspace" aria-label="Control del vehículo">
+<div id="unit-access" class="unit-access">
+  <p id="unit-access-message" role="status">Comprobando acceso al vehículo…</p>
+  <button id="unit-access-action" class="btn btn-mint" type="button" hidden>Entrar a mi cuenta</button>
+</div>
+<section id="control-view" class="workspace" aria-label="Control del vehículo" inert>
 <div class="pilot-workspace">
 <section class="drive-panel glass-panel" aria-labelledby="vehicle-name">
-<div class="control-topline"><div class="control-identity"><h1 class="rb-warp-shell"><span id="vehicle-name" data-warp-title>Máquina de carga</span><span class="rb-warp" aria-hidden="true"></span></h1><p id="vehicle-id" class="vehicle-reference">Vehículo 01</p></div><p class="control-notice" role="status"><i class="status-dot" aria-hidden="true"></i><span id="control-notice">Comprobando acceso…</span></p></div>
+<div class="control-topline"><div class="control-identity"><h1 class="rb-warp-shell"><span id="vehicle-name" data-warp-title>Control del vehículo</span><span class="rb-warp" aria-hidden="true"></span></h1><p id="vehicle-id" class="vehicle-reference">Sin unidad seleccionada</p></div><p class="control-notice" role="status"><i class="status-dot" aria-hidden="true"></i><span id="control-notice">Comprobando acceso…</span></p></div>
 <div class="mechanics">
 <div class="drive-module"><div class="module-heading"><h2>Dirección</h2><span class="module-rule"></span></div>
 <div class="joystick-wrap"><span class="direction-label direction-top">AVANZAR</span><span class="direction-label direction-left">IZQ.</span><span class="direction-label direction-right">DER.</span><span class="direction-label direction-bottom">RETROCEDER</span>
@@ -67,7 +71,7 @@
 <div class="control-dock" role="group" aria-label="Funciones del vehículo"><div id="extra-controls" class="extra-controls" role="group" aria-label="Luces y sonido"><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-light"/></svg><span>Luces</span></button><button class="extra-control" type="button" data-placeholder="true" disabled><svg aria-hidden="true"><use href="#icon-sound"/></svg><span>Sonido</span></button></div><div class="guided-controls" role="group" aria-label="Recorridos y otros mandos"><button class="dock-button" id="demo-open" data-cursor-target data-open-panel="demo" type="button"><svg aria-hidden="true"><use href="#icon-demo"/></svg><span>Recorridos</span></button><button class="dock-button" id="commands-open" type="button" aria-haspopup="dialog" hidden><svg aria-hidden="true"><use href="#icon-pulse"/></svg><span>Comandos</span></button></div></div></div>
 </div>
 <aside class="control-sidebar" aria-label="Recorridos y actividad">
-<section id="demo-card" class="glass-panel sidebar-card demo-panel" aria-labelledby="demo-heading"><span class="rb-flip-surface" data-flip-surface="demo" aria-hidden="true"></span><div class="panel-heading"><h2 id="demo-heading">Recorridos guiados</h2></div><label for="demo-select" class="form-label">Elige un recorrido</label><select id="demo-select" class="form-select" disabled><option value="">Cargando recorridos…</option></select><p id="demo-description" class="demo-description">Selecciona una DEMO.</p><div class="demo-actions"><div id="demo-start-effect" data-cursor-target><button id="demo-start" class="btn btn-mint" type="button" disabled><svg aria-hidden="true"><use href="#icon-demo"/></svg>Iniciar DEMO</button></div><button id="demo-cancel" class="btn btn-outline-soft" type="button" disabled>Cancelar</button></div><p id="demo-hold-note">Mantén pulsado para iniciar.</p></section>
+<section id="demo-card" class="glass-panel sidebar-card demo-panel" aria-labelledby="demo-heading"><span class="rb-flip-surface" data-flip-surface="demo" aria-hidden="true"></span><div class="panel-heading"><h2 id="demo-heading">Recorridos guiados</h2></div><label for="demo-select" class="form-label">Elige un recorrido</label><select id="demo-select" class="form-select" disabled><option value="">Sin unidad seleccionada</option></select><p id="demo-description" class="demo-description">Los recorridos se cargan al seleccionar una unidad.</p><div class="demo-actions"><div id="demo-start-effect" data-cursor-target><button id="demo-start" class="btn btn-mint" type="button" disabled><svg aria-hidden="true"><use href="#icon-demo"/></svg>Iniciar DEMO</button></div><button id="demo-cancel" class="btn btn-outline-soft" type="button" disabled>Cancelar</button></div><p id="demo-hold-note">Mantén pulsado para iniciar.</p></section>
 </aside>
 </section>
 <section id="monitor-view" class="monitor-workspace" aria-label="Monitoreo del vehículo" hidden>

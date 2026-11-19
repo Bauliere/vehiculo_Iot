@@ -29,13 +29,20 @@ class ControlApplication {
     this.vehicleId = null;
     this.mode = 'pending';
     this.account = null;
+    this.accountNotice = '';
     this.units = [];
+    this.unitsError = '';
     this.view = new ControlView(document);
     this.theme = new ThemeManager(document);
     this.sessionLoading = false;
     this.monitorView = new MonitorView(document);
     this.historyResize = new ResizeObserver(() => this.resizeMonitor());
     this.navigation = new Navigation(document, {
+      beforeView: (_name, previous) => {
+        if (previous !== 'showroom' || (!this.showroom.session && !this.showroom.reserving)) return true;
+        notice(this.view.get('showroom-notice'), 'Finaliza la prueba antes de cambiar de vista.');
+        return false;
+      },
       onView: name => {
         if (this.joystick?.active || this.lever?.active) void this.controller.stop();
         if (name === 'monitor' && this.vehicleId) void this.monitor.enter();
@@ -136,6 +143,12 @@ class ControlApplication {
     this.view.get('refresh-button').addEventListener('click', () => void this.retry());
     this.view.get('controlled-unit').addEventListener('change', event => this.chooseUnit(Number(event.target.value)));
     this.startAccountDialog();
+    this.view.get('unit-access-action').addEventListener('click', () => {
+      if (this.mode === 'offline' || this.unitsError) void this.retry();
+      else if (!this.account) this.view.get('account-button').click();
+      else this.navigation.showView('admin');
+    });
+    this.syncUnits();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.connectionLost();
       else void this.health.check();
@@ -192,11 +205,9 @@ class ControlApplication {
       this.selectVehicle(CONFIG.vehicleId);
       void this.connectSession();
     } else {
-      this.api.setAccount();
+      if (mode === 'commercial') this.api.setAccount();
       this.syncUnits();
-      this.navigation.showView('showroom');
       if (this.mode === 'commercial' && previousView === 'showroom') void this.showroom.load();
-      this.showSocketStatus('disconnected');
     }
   }
 
@@ -231,7 +242,21 @@ class ControlApplication {
     this.demoSelection = 0;
     this.vehicleId = id;
     this.fausto.switchVehicle(id);
-    if (!id) { this.showSocketStatus('disconnected'); return; }
+    if (!id) {
+      this.joystick.setEnabled(false);
+      this.lever.setEnabled(false);
+      if (document.documentElement.hasAttribute('data-pilot-fullscreen')) {
+        void this.fullscreen.toggle().catch(() => this.fullscreen.sync(false));
+      }
+      this.controller = null;
+      this.monitor = null;
+      this.feedback = null;
+      this.view.clearVehicle();
+      this.view.render(new ControlState().value);
+      this.monitorView.clear();
+      this.syncUnits();
+      return;
+    }
     this.catalog = new Catalog([]);
     this.state = new ControlState();
     this.view.demos([]);
@@ -293,8 +318,6 @@ class ControlApplication {
   syncUnits() {
     const pilot = this.mode === 'legacy' || (this.mode === 'commercial' && this.units.length > 0);
     this.navButton('admin').hidden = !this.account;
-    this.navButton('control').hidden = !pilot;
-    this.navButton('monitor').hidden = !pilot;
     this.view.get('fullscreen-button').hidden = !pilot;
     this.view.text('admin-nav-label', this.account?.cuenta.rol === 'usuario' ? 'Mis vehículos' : 'Administración');
     const switcher = this.view.get('unit-switcher');
@@ -302,13 +325,54 @@ class ControlApplication {
     const select = this.view.get('controlled-unit');
     select.replaceChildren(...this.units.map(unit => new Option(unit.nombre, unit.id_vehiculo)));
     select.value = this.vehicleId ?? '';
+    this.syncUnitAccess();
     this.connectionActions();
+  }
+
+  syncUnitAccess() {
+    const locked = this.mode !== 'legacy' && !this.vehicleId;
+    document.documentElement.toggleAttribute('data-unit-locked', locked);
+    this.view.get('control-view').inert = locked;
+    this.view.get('monitor-view').inert = locked;
+    const banner = this.view.get('unit-access');
+    banner.hidden = !locked || !['control', 'monitor'].includes(this.navigation.currentView);
+    if (locked && this.mode !== 'pending' && !this.showroom.session) {
+      this.view.status('ws-status', 'unverified', 'Sin unidad');
+    }
+    if (banner.hidden) return;
+
+    let message;
+    let action = '';
+    if (this.mode === 'pending') {
+      message = 'Comprobando acceso al vehículo…';
+    } else if (this.mode === 'offline') {
+      message = 'No se pudo comprobar el acceso al vehículo.';
+      action = 'Reintentar';
+    } else if (!this.account) {
+      message = this.accountNotice || 'Entra con tu cuenta para usar tu vehículo.';
+      action = 'Entrar a mi cuenta';
+    } else if (this.fetchingUnits) {
+      message = 'Consultando tus unidades…';
+    } else if (this.unitsError) {
+      message = this.unitsError;
+      action = 'Reintentar';
+    } else if (this.account.cuenta.rol === 'administrador') {
+      message = 'Para usar Control o Monitoreo, el comprador debe autorizar soporte a tu cuenta.';
+      action = 'Abrir Administración';
+    } else {
+      message = 'Tu cuenta todavía no tiene vehículos asignados.';
+    }
+    this.view.text('unit-access-message', message);
+    this.view.text('unit-access-action', action);
+    this.view.get('unit-access-action').hidden = !action;
   }
 
   async fetchUnits() {
     const account = this.account;
     if (!account || this.fetchingUnits === account) return;
     this.fetchingUnits = account;
+    this.unitsError = '';
+    this.syncUnitAccess();
     try {
       const rows = [];
       let page;
@@ -319,14 +383,18 @@ class ControlApplication {
       } while (page.length === 100);
       this.units = rows;
       if (!rows.some(unit => unit.id_vehiculo === this.vehicleId)) this.selectVehicle(rows[0]?.id_vehiculo ?? null);
-      this.syncUnits();
-      if (!this.vehicleId && ['control', 'monitor'].includes(this.navigation.currentView)) this.navigation.showView('admin');
       if (this.vehicleId && this.socket && !this.socket.running) this.socket.start();
     } catch (error) {
       if (this.account !== account) return;
       if (error.status === 401) this.endAccount('La sesión terminó. Vuelve a iniciar sesión.');
-      else notice(this.view.get('commercial-notice'), error.message, true);
-    } finally { if (this.fetchingUnits === account) this.fetchingUnits = null; }
+      else {
+        this.unitsError = 'No se pudieron consultar las unidades asignadas.';
+        notice(this.view.get('commercial-notice'), error.message, true);
+      }
+    } finally {
+      if (this.fetchingUnits === account) this.fetchingUnits = null;
+      if (this.account === account) this.syncUnits();
+    }
   }
 
   startAccountDialog() {
@@ -351,17 +419,18 @@ class ControlApplication {
       try {
         const body = Object.fromEntries(new FormData(form));
         this.account = await this.api.request('/plataforma/sesion', { method: 'POST', body });
+        this.accountNotice = '';
         this.api.setAccount(this.account.token);
         this.commercial.setAccount(this.account.cuenta);
         this.syncAccountDialog();
         this.syncUnits();
-        this.navigation.showView('admin');
+        if (this.navigation.currentView === 'showroom') this.navigation.showView('control');
         void this.fetchUnits();
         this.expires = setTimeout(() => this.endAccount('La sesión terminó. Vuelve a iniciar sesión.'),
           Math.max(0, Date.parse(this.account.vence) - Date.now()));
         form.reset();
         dialog.close();
-        this.view.get('commercial-heading').focus();
+        this.view.get('main-control').focus({ preventScroll: true });
       } catch (error) { notice(message, error.message, true); }
       finally { submit.disabled = false; }
     });
@@ -394,13 +463,15 @@ class ControlApplication {
     clearTimeout(this.expires);
     this.selectVehicle(null);
     this.account = null;
+    this.accountNotice = message;
     this.units = [];
+    this.unitsError = '';
+    this.fetchingUnits = null;
     this.api.setAccount();
     this.commercial.setAccount(null);
     this.syncAccountDialog();
     this.syncUnits();
-    this.navigation.showView('showroom');
-    void this.showroom.load(message);
+    this.navigation.showView('control');
   }
 
   async retry() {

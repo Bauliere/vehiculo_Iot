@@ -59,6 +59,8 @@ async page => {
     await page.getByLabel('Correo electrónico', { exact: true }).fill('qa@example.com');
     await page.getByLabel('Contraseña', { exact: true }).fill('solo-datos-interceptados');
     await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Vistas de la aplicación' })
+      .getByRole('button', { name: 'Administración', exact: true }).click();
     await page.getByRole('heading', { name: 'Administración', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Unidades', exact: true }).click();
     if (scenario === 'empty') await page.getByText('No hay unidades en esta búsqueda.').waitFor();

@@ -14,6 +14,10 @@ export class MonitorView {
 
   get(id) { return this.document.getElementById(id); }
   text(id, text) { const node = this.get(id); if (node) node.textContent = text; }
+  clear() {
+    this.render({ latest: null, records: [], stateStatus: 'idle', historyStatus: 'idle', socket: 'disconnected' });
+    this.snapshot = null;
+  }
   setPageSize(size) {
     if (!Number.isInteger(size) || size < 1 || size > 10 || this.pageSize === size) return;
     this.pageSize = size;

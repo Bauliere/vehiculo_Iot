@@ -3,7 +3,10 @@ import { action } from './commercial-ui.js';
 
 /** Solo representación. Los datos remotos se insertan como texto, nunca como HTML. */
 export class ControlView {
-  constructor(document) { this.document = document; }
+  constructor(document) {
+    this.document = document;
+    this.initialExtras = [...this.get('extra-controls').children];
+  }
   get(id) { return this.document.getElementById(id); }
   text(id, value) {
     const node = this.get(id);
@@ -18,6 +21,16 @@ export class ControlView {
   vehicle(vehicle) {
     this.text('vehicle-name', vehicle.nombre);
     this.text('vehicle-id', `Vehículo ${vehicle.id_vehiculo.toString().padStart(2, '0')}`);
+  }
+  clearVehicle() {
+    this.text('vehicle-name', 'Control del vehículo');
+    this.text('vehicle-id', 'Sin unidad seleccionada');
+    this.commands([], () => {});
+    this.get('extra-controls').replaceChildren(...this.initialExtras);
+    this.demos([]);
+    this.get('demo-select').options[0].textContent = 'Sin unidad seleccionada';
+    this.text('demo-description', 'Los recorridos se cargan al seleccionar una unidad.');
+    this.availability({ enabled: false, ready: false, hasKey: false });
   }
   commands(commands, onCommand) {
     const container = this.get('extra-controls');
