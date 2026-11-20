@@ -170,12 +170,20 @@ html:is([data-view="admin"], [data-view="showroom"]) .main-content { display: bl
 .showroom-models article { display: grid; gap: 12px; }
 .showroom-photo-frame {
   position: relative;
+  isolation: isolate;
   height: clamp(10rem, 34vw, 19rem);
   overflow: hidden;
   border-radius: 8px;
   background: var(--surface-deep);
 }
+.showroom-photo-frame:has(.showroom-photo-effect) {
+  background: radial-gradient(ellipse at var(--tilt-light-x, 50%) var(--tilt-light-y, 45%),
+    color-mix(in srgb, var(--accent) 14%, #08080b), #08080b 75%);
+}
+:root .showroom-photo-frame > .monitor-foil { opacity: .24; mix-blend-mode: screen; }
+[data-tilting] .showroom-photo-frame > .monitor-foil { opacity: max(.24, var(--tilt-foil, .24)); }
 .showroom-photo { display: block; width: 100%; height: 100%; object-fit: contain; }
+.showroom-photo-frame:has(.showroom-photo-effect[data-ready]) .showroom-photo { opacity: 0; }
 .showroom-photo-effect { position: absolute; inset: 0; visibility: hidden; }
 .showroom-photo-effect[data-ready] { visibility: visible; }
 .showroom-models .commercial-paging { grid-column: 1 / -1; }

@@ -29,9 +29,21 @@ test('El joystick emite cambios de dirección, no un POST por píxel', () => {
   const f = fixture();
   f.joystick.setEnabled(true);
   f.joystick.pointerDown(f.event(120, 20));
-  for (let y = 21; y < 60; y++) f.joystick.pointerMove(f.event(120, y));
+  for (let y = 21; y < 54; y++) f.joystick.pointerMove(f.event(120, y));
   f.joystick.pointerMove(f.event(220, 120));
   assert.deepEqual(f.directions, ['forward', 'right']);
+  f.joystick.destroy();
+});
+
+test('Un toque cerca del centro no activa el joystick y un arrastre amplio sí', () => {
+  const f = fixture();
+  f.joystick.setEnabled(true);
+  f.joystick.pointerDown(f.event(120, 80));
+  f.joystick.pointerMove(f.event(120, 60));
+  assert.deepEqual(f.directions, []);
+  f.joystick.pointerMove(f.event(120, 55));
+  f.joystick.pointerMove(f.event(120, 80));
+  assert.deepEqual(f.directions, ['forward', 'stop']);
   f.joystick.destroy();
 });
 

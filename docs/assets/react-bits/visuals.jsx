@@ -67,15 +67,16 @@ function Fausto({ host, logo, accent, paper }) {
   />;
 }
 
-function ShowroomPhoto({ host, src }) {
+function ShowroomPhoto({ host, src, accent }) {
   useRestoreFallback(host);
   return <HalftoneReveal
     src={src}
     fit="contain"
     mode="duotone"
-    inkColor="#120f17"
-    paperColor="#f4f1ea"
-    accentColor="#a78bfa"
+    inkColor="#f4f1ea"
+    paperColor="#08080b"
+    accentColor={accent}
+    transparentBackground
     cellSize={2}
     contrast={1.15}
     revealRadius={200}
@@ -162,17 +163,20 @@ export function mountVisuals(document) {
   const syncPhotos = () => {
     const frames = webgl && !motion.matches && html.dataset.view === 'showroom'
       ? [...showroom.querySelectorAll('.showroom-photo-frame:has(> .showroom-photo-effect)')] : [];
-    for (const [frame, root] of photos) {
+    for (const [frame, photo] of photos) {
       if (frames.includes(frame)) continue;
-      root.unmount();
+      photo.root.unmount();
       photos.delete(frame);
     }
+    if (!frames.length) return;
+    const accent = getComputedStyle(html).getPropertyValue('--accent').trim();
     for (const frame of frames) {
-      if (photos.has(frame)) continue;
+      const photo = photos.get(frame);
+      if (photo?.accent === accent) continue;
       const host = frame.querySelector('.showroom-photo-effect');
-      const root = withVisualRoot(host);
-      root.render(<ShowroomPhoto host={host} src={frame.querySelector('img').src} />);
-      photos.set(frame, root);
+      const root = photo?.root ?? withVisualRoot(host);
+      root.render(<ShowroomPhoto host={host} src={frame.querySelector('img').src} accent={accent} />);
+      photos.set(frame, { root, accent });
     }
   };
   new MutationObserver(syncPhotos).observe(showroom, { childList: true, subtree: true });

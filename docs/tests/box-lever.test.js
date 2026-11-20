@@ -56,6 +56,18 @@ test('Arrastrar conserva una orden por posición y pasa por neutral antes de baj
   f.lever.destroy();
 });
 
+test('Un toque cerca del centro no activa la caja y un arrastre amplio sí', () => {
+  const f = fixture();
+  f.lever.setEnabled(true);
+  f.lever.pointerDown(f.event(80));
+  f.lever.pointerMove(f.event(55));
+  assert.deepEqual(f.calls, []);
+  f.lever.pointerMove(f.event(50));
+  f.lever.pointerMove(f.event(80));
+  assert.deepEqual(f.calls, ['up', 'stop']);
+  f.lever.destroy();
+});
+
 test('Un segundo dedo y teclado no sustituyen el arrastre activo', () => {
   const f = fixture();
   f.lever.setEnabled(true);

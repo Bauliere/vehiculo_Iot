@@ -1,4 +1,6 @@
 /** Palanca de caja con retorno al centro: no envía peticiones ni repite órdenes. */
+const NEUTRAL_HEIGHT_RATIO = 0.28;
+
 export class BoxLever {
   constructor(element, { onDirection = () => {}, onRelease = () => {} } = {}) {
     this.element = element;
@@ -59,7 +61,7 @@ export class BoxLever {
     const position = Math.max(-travel, Math.min(travel, distance));
     this.stick.style.transform = `translateY(${position}px)`;
     // La franja central permite detener antes de invertir la dirección de la caja.
-    const direction = Math.abs(distance) < bounds.height * 0.14 ? 'stop' : distance < 0 ? 'up' : 'down';
+    const direction = Math.abs(distance) < bounds.height * NEUTRAL_HEIGHT_RATIO ? 'stop' : distance < 0 ? 'up' : 'down';
     this.changeDirection(direction);
   }
 

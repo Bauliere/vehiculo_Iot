@@ -44,8 +44,9 @@ export class Showroom {
   model(model) {
     const article = node('article', '', 'glass-panel commercial-panel');
     article.setAttribute('data-tilt-card', '');
-    article.append(group('monitor-foil', node('i'), node('i'), node('i'), node('i')));
-    article.firstChild.setAttribute('aria-hidden', 'true');
+    const foil = group('monitor-foil', node('i'), node('i'), node('i'), node('i'));
+    foil.setAttribute('aria-hidden', 'true');
+    article.append(foil);
     const heading = group('showroom-card-title', icon('catalog'), node('h2', model.nombre));
     article.append(heading);
     const photoUrl = model.foto_url?.startsWith('https://') ? model.foto_url
@@ -56,13 +57,17 @@ export class Showroom {
       if (model.id_modelo === 1) {
         const effect = node('div', '', 'showroom-photo-effect');
         effect.setAttribute('aria-hidden', 'true');
+        frame.prepend(foil);
         frame.append(effect);
       }
       photo.alt = model.nombre;
       photo.loading = 'lazy';
       photo.decoding = 'async';
       photo.referrerPolicy = 'no-referrer';
-      photo.addEventListener('error', () => frame.remove(), { once: true });
+      photo.addEventListener('error', () => {
+        if (frame.contains(foil)) article.prepend(foil);
+        frame.remove();
+      }, { once: true });
       photo.src = photoUrl;
       article.append(frame);
     }

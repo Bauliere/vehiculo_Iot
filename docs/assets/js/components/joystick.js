@@ -1,4 +1,6 @@
 /** Entrada de dirección: ratón, pantalla táctil y teclado comparten las mismas transiciones. */
+const NEUTRAL_WIDTH_RATIO = 0.26;
+
 export class Joystick {
   constructor(element, { onDirection = () => {}, onRelease = () => {} } = {}) {
     this.element = element;
@@ -56,7 +58,7 @@ export class Joystick {
     const distance = Math.hypot(x, y);
     if (distance > radius) { x *= radius / distance; y *= radius / distance; }
     this.stick.style.transform = `translate(${x}px, ${y}px)`;
-    const direction = distance < bounds.width * 0.13 ? 'stop'
+    const direction = distance < bounds.width * NEUTRAL_WIDTH_RATIO ? 'stop'
       : Math.abs(x) > Math.abs(y) ? (x < 0 ? 'left' : 'right')
         : (y < 0 ? 'forward' : 'backward');
     this.changeDirection(direction);

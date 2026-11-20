@@ -58,6 +58,7 @@ uniform float uScale;
 uniform vec3 uInk;
 uniform vec3 uAccent;
 uniform vec3 uPaper;
+uniform bool uTransparent;
 uniform float uContrast;
 uniform float uBrightness;
 uniform float uInvert;
@@ -230,15 +231,19 @@ void main() {
   float grow = smoothstep(0.0, 1.0, clamp((uIntro * 1.7 - delay) / 0.45, 0.0, 1.0));
 
   vec3 print = uPaper;
+  vec4 inkLayer = vec4(0.0);
   if (uMode < 0.5) {
     float k = dots(p, base, coverage(photo(center(p, base), lod, 0.5)), 0.0, grow);
     print = mix(uPaper, uInk, k);
+    inkLayer = vec4(uInk * k, k);
   } else if (uMode < 1.5) {
     float second = base + 0.5236;
     float tA = coverage(photo(center(p, base), lod, 0.5));
     float tB = coverage(photo(center(p + drift, second) - drift, lod, 0.5));
     float kA = dots(p, base, pow(tA, 1.9), 0.0, grow);
     float kB = dots(p + drift, second, clamp(tB * 1.3, 0.0, 1.0) * 0.8, 1.0, grow);
+    float accentAlpha = kB * (1.0 - kA);
+    inkLayer = vec4(uInk * kA + uAccent * accentAlpha, kA + accentAlpha);
     if (dot(uPaper, LUMA) > 0.5) {
       print = uPaper * mix(vec3(1.0), uAccent, kB) * mix(vec3(1.0), uInk, kA);
     } else {
@@ -283,6 +288,11 @@ void main() {
   float w = max(fwidth(d), 0.0001) * 0.75;
   float k = smoothstep(r + w, r - w, d) * clamp(r / (w * 2.0), 0.0, 1.0);
   vec4 sharp = photo(p, 0.0, 0.0);
+  if (uTransparent && uMode < 1.5) {
+    vec4 composite = mix(inkLayer, vec4(sharp.rgb * sharp.a, sharp.a), k);
+    outColor = vec4(composite.rgb / max(composite.a, 0.0001), composite.a);
+    return;
+  }
   vec3 real = mix(uPaper, sharp.rgb, sharp.a);
   outColor = vec4(mix(print, real, k), 1.0);
 }`;
@@ -374,6 +384,7 @@ const HalftoneReveal = ({
   inkColor = '#120f17',
   accentColor = '#ff4f2a',
   paperColor = '#ffffff',
+  transparentBackground = false,
   contrast = 1.1,
   brightness = 0,
   invert = false,
@@ -426,7 +437,8 @@ const HalftoneReveal = ({
     const container = containerRef.current;
     const canvas = canvasRef.current;
     const gl = canvas?.getContext('webgl2', {
-      alpha: false,
+      alpha: transparentBackground,
+      premultipliedAlpha: !transparentBackground,
       antialias: false,
       depth: false,
       stencil: false,
@@ -470,6 +482,7 @@ const HalftoneReveal = ({
       'uInk',
       'uAccent',
       'uPaper',
+      'uTransparent',
       'uContrast',
       'uBrightness',
       'uInvert',
@@ -651,6 +664,7 @@ const HalftoneReveal = ({
       gl.uniform3fv(viewUniforms.uInk, toRgb(s.inkColor));
       gl.uniform3fv(viewUniforms.uAccent, toRgb(s.accentColor));
       gl.uniform3fv(viewUniforms.uPaper, toRgb(s.paperColor));
+      gl.uniform1i(viewUniforms.uTransparent, transparentBackground ? 1 : 0);
       gl.uniform1f(viewUniforms.uContrast, s.contrast);
       gl.uniform1f(viewUniforms.uBrightness, s.brightness);
       gl.uniform1f(viewUniforms.uInvert, s.invert ? 1 : 0);
@@ -854,7 +868,7 @@ const HalftoneReveal = ({
       gl.deleteProgram(maskProgram);
       gl.deleteProgram(viewProgram);
     };
-  }, [src]);
+  }, [src, transparentBackground]);
 
   useEffect(() => {
     wakeRef.current?.();
