@@ -321,7 +321,7 @@ class ControlApplication {
     this.view.get('fullscreen-button').hidden = !pilot;
     this.view.text('admin-nav-label', this.account?.cuenta.rol === 'usuario' ? 'Mis vehículos' : 'Administración');
     const switcher = this.view.get('unit-switcher');
-    switcher.hidden = this.mode !== 'commercial' || !this.units.length || !['control', 'monitor'].includes(this.navigation.currentView);
+    switcher.hidden = this.mode !== 'commercial' || this.units.length < 2 || !['control', 'monitor'].includes(this.navigation.currentView);
     const select = this.view.get('controlled-unit');
     select.replaceChildren(...this.units.map(unit => new Option(unit.nombre, unit.id_vehiculo)));
     select.value = this.vehicleId ?? '';
@@ -337,7 +337,7 @@ class ControlApplication {
     const banner = this.view.get('unit-access');
     banner.hidden = !locked || !['control', 'monitor'].includes(this.navigation.currentView);
     if (locked && this.mode !== 'pending' && !this.showroom.session) {
-      this.view.status('ws-status', 'unverified', 'Sin unidad');
+      this.view.status('ws-status', 'unverified', this.mode === 'offline' ? 'Sin verificar' : 'Sin unidad');
     }
     if (banner.hidden) return;
 

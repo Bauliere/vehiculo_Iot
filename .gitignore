@@ -12,6 +12,7 @@ certs/
 *.pem
 *.key
 *.log
+iot43_secrets.h
 postman/*local*.json
 *.postman_environment.json
 !postman/Local.postman_environment.json

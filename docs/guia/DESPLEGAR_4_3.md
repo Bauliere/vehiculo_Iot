@@ -1,138 +1,180 @@
-# Actualizar a la actividad 4.3
+# Despliegue de la actividad 4.3
 
-La actualización de Fausto sustituía dos archivos Python. La 4.3 también aplica las migraciones 001 y 002 en RDS. Por eso conserva dos respaldos antes del cambio, los archivos de EC2 y el snapshot de la base. El resto del despliegue reutiliza el Python, la tarea programada y Caddy que ya están instalados.
+## Usar la instalación actual
 
-## 1. Laptop · Subir la rama a GitHub
+La API 4.3 ya está desplegada en EC2 y las migraciones 001 y 002 están aplicadas en RDS. Para un cambio de HTML o CSS, publica `docs/` en `main`. La autenticación de la ESP se actualiza desde la laptop en Arduino IDE.
 
-En PowerShell de tu laptop, con el laboratorio y RDS activos:
+1. En la consola de AWS, comprueba que EC2 esté **En ejecución** y RDS **Disponible**. Abre el [diagnóstico de RDS](https://vehiculo-iot.34-225-114-88.sslip.io/health/rds) y la [configuración de la plataforma](https://vehiculo-iot.34-225-114-88.sslip.io/plataforma/config). Deben responder `status: ok`, `database: RDS` y `activa: true`, respectivamente.
+2. Conecta la ESP por USB y abre `C:\Users\yolop\Desktop\MAQUINA_CARGA_WSS_4_3\MAQUINA_CARGA_WSS_4_3.ino` en Arduino IDE. Selecciona **NodeMCU 1.0 (ESP-12E Module)**, **160 MHz** y el COM de la placa. Pulsa **Subir**. En el Monitor Serie a **115200**, confirma `Firmware 4.3.0`, `WIFI=OK`, `WSS=OK` y `VEHICULO=1`.
+3. En [CONTROL IoT](https://bauliere.github.io/vehiculo_Iot/), inicia sesión con el comprador asignado a **MC-001**. La cuenta de prueba está en `%LOCALAPPDATA%\VehiculoIoT\4.3\cuenta-comprador.txt` en la laptop. El panel debe abrir el canal WSS de la unidad 1. Para controlarla con la cuenta de Administración, el comprador puede autorizar soporte temporal desde **Mis vehículos**.
+
+**WSS · Sin unidad** indica que todavía falta iniciar sesión, seleccionar una unidad autorizada o recibir una asignación. **Sin verificar** indica que la web aún no pudo comprobar el acceso con la API. **WSS · En línea** confirma el canal del navegador. Para mover el carrito, espera a que Control indique que el dispositivo está conectado y prueba primero con las ruedas elevadas, en una zona despejada.
+
+Si EC2 está en ejecución y la URL pública falla, ejecuta en el escritorio remoto:
+
+```powershell
+Get-ScheduledTask -TaskName 'VehiculoIoT-API','VehiculoIoT-HTTPS' | Select-Object TaskName,State
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
+```
+
+Si la consulta local funciona, comprueba la IP pública de la instancia y la tarea de Caddy. Si la API local falla, revisa `Get-ScheduledTaskInfo -TaskName 'VehiculoIoT-API'` y `Get-Content -LiteralPath 'C:\Users\Administrator\Desktop\websocket_iot\logs\api.log' -Tail 30`.
+
+## Probar como invitado
+
+Con una sola unidad, haz la prueba de comprador y la de invitado por separado. En PowerShell del escritorio remoto:
+
+```powershell
+Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
+notepad .env
+```
+
+En `.env` cambia `EXHIBITION_ENABLED` a `true` y conserva `PUBLIC_CONTROL_ENABLED=false`. Guarda y ejecuta:
+
+```powershell
+Stop-ScheduledTask -TaskName 'VehiculoIoT-API'
+Start-Sleep -Seconds 3
+Start-ScheduledTask -TaskName 'VehiculoIoT-API'
+Start-Sleep -Seconds 8
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
+```
+
+Cuando el diagnóstico muestre `status: ok` y `database: RDS`, sigue estos pasos con la ESP conectada y el carrito supervisado.
+
+1. En **Administración → Unidades**, edita MC-001. Libera la asignación del comprador y cambia su estado a **Exhibición**. Guarda. Asegúrate de que el modelo tiene capacidades de dirección habilitadas para exhibición.
+2. En una ventana privada, entra a **Catálogo → Reservar prueba**. El control temporal dura un minuto. Una segunda ventana debe mostrar la unidad ocupada mientras la primera conserva la reserva.
+3. Finaliza la prueba y vuelve a **Administración → Unidades**. Cambia el estado a **Disponible** y reasigna MC-001 al comprador para que vuelva a estar en **Mis vehículos**.
+
+## Reinstalación o cambio de base
+
+Usa las fases siguientes al desplegar la 4.3 en una instalación que todavía use el esquema anterior.
+
+## Para quien continúe este proyecto
+
+Lee esta sección antes de dar comandos. La confusión anterior vino de mezclar tres despliegues distintos:
+
+- **Fausto** fue una actualización pequeña: dos archivos Python se copiaban sobre la instalación existente.
+- **La actividad 4.3** agrega código de backend, dos migraciones SQL y una interfaz de Administración. Requiere actualizar EC2, cambiar el esquema de RDS/Aurora y después publicar la web.
+- **GitHub y EC2 tienen funciones distintas**: los cambios se suben a GitHub desde la laptop. EC2 no tiene Git y no debe recibir instrucciones de `git clone` o `git push`.
+
+En el despliegue se usan dos elementos distintos.
+
+1. El **ZIP del repositorio** lleva el código fuente de una versión de GitHub a EC2. No incluye los datos de RDS.
+2. El **snapshot de RDS/Aurora** es una copia de la base de datos. No contiene el código de la aplicación.
+
+**Primero ensaya 001 y 002 en una copia de prueba. Antes de modificar la base activa, confirma su respaldo.** Los puntos 2.1, 2.4, 3.4 y 3.5 de la actividad admiten un ambiente de prueba aislado. Se puede usar MySQL local con una copia representativa o restaurar un snapshot en AWS. El actualizador de EC2 usa el `.env` de la API activa y pide el identificador de su snapshot.
+
+No instales Git en EC2 para esta tarea. Descarga el ZIP del commit aprobado, extráelo en una carpeta temporal y ejecuta desde allí el script. No ejecutes el actualizador de producción hasta completar la prueba aislada y revisar el snapshot correcto.
+
+## Estado confirmado
+
+Última revisión: **19 de noviembre de 2026**.
+
+| Elemento | Estado |
+| --- | --- |
+| Rama de trabajo | `codex/actividad-4-3` |
+| Commit publicado en esa rama | `0c4071139bf9a03f8750862375d3ded301c1ffea` |
+| Rama `main` | Contiene la 4.3 y abre en Control |
+| ZIP del código | Se puede descargar desde el enlace de commit indicado abajo |
+| Git en EC2 | No instalado; el despliegue debe funcionar sin Git |
+| Ensayo local MySQL | Migraciones y reversión comprobadas sobre un esquema desechable |
+| Base productiva | Migraciones 001 y 002 aplicadas. Unidad 1 asignada al comprador de prueba |
+| Publicación de la interfaz 4.3 en Pages | Activa. Los cambios posteriores se publican al actualizar `main` |
+| Prueba física con la ESP actualizada | Pendiente |
+
+La API está instalada en `C:\Users\Administrator\Desktop\websocket_iot`. Su tarea es `VehiculoIoT-API`; los logs están en `C:\Users\Administrator\Desktop\websocket_iot\logs\api.log`. La tarea `VehiculoIoT-HTTPS`/Caddy proporciona HTTPS y WSS. No reemplaces `.env`, certificados, entorno virtual ni configuración de Caddy por archivos del ZIP.
+
+## Fase 1 · Publicar el código de la rama
+
+Hazlo en PowerShell **de la laptop**, desde la copia del repositorio que vas a usar:
 
 ```powershell
 Set-Location 'C:\Users\yolop\Documents\ChatGPT\Carrito IOT\vehiculo_iot'
+git status --short --branch
 git push origin codex/actividad-4-3
 ```
 
-## 2. EC2 · Actualizar el backend
+El push es necesario solo si hiciste cambios nuevos. La rama ya estaba publicada en el commit indicado arriba al revisar esta guía. No subas secretos ni `.env`.
 
-Deja el vehículo detenido. En **PowerShell como administrador dentro de Escritorio remoto**, pega este bloque. Usa Git para traer los archivos a la carpeta temporal de EC2.
+## Fase 2 · Ensayar las migraciones en una copia
+
+Consulta la evidencia del ensayo local en [Actividad 4.3](ACTIVIDAD_4_3.md#respaldo-entorno-de-prueba-y-transición). Allí se documentaron las dos migraciones con una copia del esquema y datos de prueba. Para el punto 3.4, comprueba que la evidencia cubra filas e IDs anteriores, relaciones, secuencias de DEMO y lectura del historial por la API. Completa las comprobaciones que falten en un entorno aislado.
+
+Si quieres repetir el ensayo con los datos reales y el motor del laboratorio, abre **Aurora and RDS → Databases**, identifica el recurso por el endpoint de EC2 y busca una copia disponible. Si ya existe una copia apropiada, reutilízala. Para crearla, toma un snapshot del origen y, cuando esté `Available`, usa **Snapshots → Actions → Restore snapshot**. Identifica el nuevo recurso como `iot43-ensayo`, en la VPC de EC2, con acceso privado y el grupo de seguridad que permite MySQL desde EC2. Esta opción usa recursos del laboratorio. Anota el endpoint de escritura y el puerto de la copia, además del identificador del snapshot usado.
+
+`tools/migrar_4_3.py` admite un `.env` y un destino explícitos, pero `tools/actualizar_ec2_4_3.ps1` no: este último lee el `.env` productivo. Para la prueba se necesita preparar un `.env` separado que apunte únicamente a la copia y ejecutar primero la acción `verificar`, luego aplicar allí las migraciones y volver a verificar. No copies el `.env` de prueba sobre el productivo. Si no están claros el endpoint y los permisos del usuario SQL de prueba, detente antes de ejecutar DDL.
+
+Compara los conteos e IDs antes y después y confirma que los 21 procedimientos sigan presentes. Para ensayar la reversión estructural, usa el esquema desechable `iot43_stage` con las migraciones aplicadas y antes de crear datos comerciales. Ejecuta primero `002_plataforma_comercial.down.sql` y después `001_modelos_unidades.down.sql`. Para recuperar producción, utiliza un snapshot verificado.
+
+## Fase 3 · Preparar el ZIP de código en EC2
+
+Solo descarga el paquete cuando se vaya a hacer el ensayo o, después de aprobarlo, el despliegue. Esta descarga **no instala nada ni cambia la API o la base**. En PowerShell elevado dentro de Escritorio remoto:
 
 ```powershell
-$descarga43 = Join-Path $env:TEMP ('vehiculo-iot-4-3-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-git clone --depth 1 --branch codex/actividad-4-3 https://github.com/Bauliere/vehiculo_Iot.git $descarga43
-if ($LASTEXITCODE -ne 0) { throw 'Comprueba el push de la laptop y el acceso de EC2 a GitHub.' }
-
-powershell.exe -NoProfile -File (Join-Path $descarga43 'tools\actualizar_ec2_4_3.ps1')
+$commit43 = '0c4071139bf9a03f8750862375d3ded301c1ffea'
+$carpeta43 = Join-Path $env:TEMP "vehiculo-iot-4-3-$commit43"
+$zip43 = "$carpeta43.zip"
+New-Item -ItemType Directory -Path $carpeta43 -Force | Out-Null
+Invoke-WebRequest -Uri "https://github.com/Bauliere/vehiculo_Iot/archive/$commit43.zip" -OutFile $zip43
+Expand-Archive -LiteralPath $zip43 -DestinationPath $carpeta43 -Force
+$script43 = Get-ChildItem -LiteralPath $carpeta43 -Filter 'actualizar_ec2_4_3.ps1' -File -Recurse | Select-Object -First 1
+if (-not $script43) { throw 'El ZIP no contiene el actualizador esperado.' }
+$raiz43 = Split-Path -Parent (Split-Path -Parent $script43.FullName)
+Write-Host "Código extraído en: $raiz43"
 ```
 
-Si falta Git en la instancia, instala [Git for Windows](https://gitforwindows.org/) y vuelve a abrir PowerShell.
+Este es el ZIP del **código**, fijado a un commit; no es el snapshot de la base. El ZIP del código puede extraerse antes, pero no ejecutes `$script43.FullName` hasta terminar el ensayo: ese script pausa la API y aplica migraciones a la base productiva configurada en EC2.
 
-### Respaldo y verificación SQL
+## Fase 4 · Desplegar el backend y migrar producción
 
-El bloque imprime la carpeta privada de respaldo en `C:\ProgramData\VehiculoIoT\4.3` y pausa la tarea `VehiculoIoT-API`. **Cuando te pida el snapshot**, abre [RDS](https://console.aws.amazon.com/rds/) en el navegador de tu laptop. En **Snapshots → Take snapshot** elige el recurso que corresponde al endpoint que imprimió el bloque y dale un nombre, por ejemplo `vehiculo-iot-antes-43`. Si RDS agrupa la base en un clúster, elige el tipo **DB cluster**. Cuando el snapshot muestre **Available**, pega su ID en la consola de EC2. [Snapshot de instancia RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CreateSnapshot.html) · [Snapshot de clúster](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/USER_CreateSnapshotCluster.html).
+Ejecuta esta fase cuando estén documentados los resultados del ensayo. El paquete de backend del commit `0c40711` también está preparado en la laptop, en `C:\Users\yolop\Desktop\Actividad-4.3-EC2-0c40711.zip`. Si usas ese ZIP, extráelo en una carpeta temporal aparte y localiza `tools\actualizar_ec2_4_3.ps1` dentro de ella. El actualizador pausa la API y te pide un snapshot. En ese momento toma o identifica el respaldo del recurso activo, comprueba en AWS que corresponda a esa base y región y espera a que esté `Available` antes de introducir su nombre. Usa snapshot de clúster para Aurora o de instancia para RDS MySQL de instancia.
 
-Al continuar, el bloque aplica las migraciones pendientes, comprueba las filas históricas y reinicia la API con la plataforma comercial activa y la exhibición pausada. Conserva `snapshot-rds.txt` y los JSON de `sql` dentro del respaldo. La salida final debe mostrar `status=ok`, `database=RDS` y `activa=true`. Si cancelas con Enter en el aviso del snapshot, se reanuda la API anterior.
+El actualizador existente hace respaldo de archivos, pausa `VehiculoIoT-API`, ejecuta ambas migraciones en la base productiva, copia el backend y reanuda la tarea. **El parámetro de snapshot se guarda como evidencia, pero el script no consulta AWS para comprobar que el snapshot exista, esté `Available` o pertenezca al endpoint correcto**. La persona que lo ejecuta debe comprobarlo en la consola antes de continuar.
 
-En la misma **EC2**, crea tu cuenta de Administración una sola vez. La herramienta pide la contraseña de forma interactiva.
+Solo después de esas comprobaciones, en la misma sesión elevada de EC2, el comando para iniciar el script es:
+
+```powershell
+& $script43.FullName
+```
+
+Cuando termine, se espera que la API local informe `status=ok`, `database=RDS` y que `/plataforma/config` indique `activa=true`. Si cualquiera falla, no publiques Pages ni pruebes el carrito; guarda la ruta del respaldo que mostró el script y el log de `logs\api.log`.
+
+## Fase 5 · Crear la cuenta y publicar Pages
+
+Una vez que el backend desplegado haya pasado su diagnóstico, en EC2 crea la cuenta administradora una sola vez. La contraseña se solicita de forma interactiva; no la pongas en el comando ni la guardes en Git.
 
 ```powershell
 Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
-.\.venv\Scripts\python.exe -m tools.cuentas_4_3 crear-admin --nombre 'Administración IoT' --correo (Read-Host 'Tu correo de administrador')
+.\.venv\Scripts\python.exe -m tools.cuentas_4_3 crear-admin --nombre 'Administración IoT' --correo (Read-Host 'Correo de administración')
 ```
 
-## 3. Laptop · Publicar la web
+Desde la laptop, abre el PR de la rama hacia `main`, revisa los archivos y la comprobación automática de Pages, e intégralo:
 
-Cuando la API esté activa y tengas tu cuenta, abre el PR en tu laptop. Revisa el cambio e intégralo en `main`. Cuando termine GitHub Pages, recarga la página con **Ctrl+F5** y entra en **Administración**.
+[Abrir PR de `codex/actividad-4-3` hacia `main`](https://github.com/Bauliere/vehiculo_Iot/compare/main...codex/actividad-4-3?expand=1)
 
-```powershell
-Start-Process 'https://github.com/Bauliere/vehiculo_Iot/compare/main...codex/actividad-4-3?expand=1'
-```
+La web se publica desde `main` en `docs/`. Tras la integración espera el despliegue de GitHub Pages, abre [CONTROL IoT](https://bauliere.github.io/vehiculo_Iot/) y recarga con `Ctrl+F5`. Subir la rama no publica Pages por sí solo.
 
-[Abrir Vehículo IoT en GitHub Pages](https://bauliere.github.io/vehiculo_Iot/).
+## Fase 6 · ESP y control físico
 
-## Cuando vayas a usar el carrito
+La ESP se autentica por WSS con `X-Device-Key`. El [firmware](../../firmware/MAQUINA_CARGA_WSS/) está preparado para cargar la credencial y la clave del portal desde `iot43_secrets.h`. En una instalación nueva, genera la credencial del ID físico correcto con `tools.cuentas_4_3 credencial-dispositivo` y crea ese archivo desde `iot43_secrets.example.h`. Para MC-001 usa el sketch privado de la laptop, que ya tiene una credencial registrada.
 
-En **Administración → Unidades**, clasifica la unidad existente con el modelo y el número de serie reales para conservar su ID e historial. Después, desde **EC2**, genera la credencial del mismo ID.
+## Privilegios de MySQL
 
-```powershell
-Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
-$idUnidad43 = Read-Host 'ID de la unidad física'
-.\.venv\Scripts\python.exe -m tools.cuentas_4_3 credencial-dispositivo $idUnidad43
-```
+Aplica las migraciones y emite credenciales de dispositivo con una cuenta de mantenimiento. Para FastAPI, [`permisos_api.sql`](../../migrations/4_3/permisos_api.sql) define un rol con ejecución de los procedimientos y acceso a las tablas que usa la plataforma. Asigna ese rol como predeterminado a un usuario dedicado con `REQUIRE SSL`, restringido a EC2, y guarda ese usuario en `DB_USER` y `DB_PASSWORD` del `.env` de EC2. Al cambiar la cuenta, reinicia `VehiculoIoT-API` y comprueba `/health/rds`, el inicio de sesión y la lectura del historial antes de operar.
 
-En Arduino IDE, en tu **laptop**, guarda la credencial de forma privada y ajusta `RUTA_WSS` al ID. Llama a `setExtraHeaders` después de `beginSslWithCA` en el sketch, conservando la configuración TLS que ya usa. Carga el sketch y verifica `WSS=OK` y el estado inicial antes de probar movimiento.
+## Qué no hacer
 
-```cpp
-// En la configuración privada.
-constexpr char CABECERA_DISPOSITIVO[] = "X-Device-Key: COPIAR_CREDENCIAL_PRIVADA";
+- No uses `git clone` ni `git push` en EC2; Git no está instalado allí.
+- No confundas el ZIP de GitHub con el snapshot de RDS/Aurora.
+- Confirma el respaldo y los resultados del ensayo aislado antes de aplicar 001/002 en producción.
+- No ejecutes `tools/actualizar_ec2_4_3.ps1` durante el ensayo: usa el `.env` productivo de EC2.
+- No integres el PR de Pages antes de que el backend y la base hayan sido comprobados como compatibles.
+- No sustituyas `.env`, certificados, credenciales o archivos de datos con contenido descargado del repositorio.
 
-// Inmediatamente después de beginSslWithCA().
-clienteWss.setExtraHeaders(CABECERA_DISPOSITIVO);
-```
+## Referencias
 
-## Si necesitas revisar o recuperar
-
-Diagnóstico desde **EC2**.
-
-```powershell
-Get-ScheduledTaskInfo -TaskName 'VehiculoIoT-API'
-Get-Content -LiteralPath 'C:\Users\Administrator\Desktop\websocket_iot\logs\api.log' -Tail 30
-```
-
-Si el fallo ocurrió con la API pausada después de iniciar la migración, conserva el respaldo y el RDS que recibió los cambios. Para volver al backend anterior, en la **laptop** restaura el snapshot en un RDS nuevo desde **Snapshots → Actions → Restore snapshot**, con conectividad privada desde EC2. Espera **Available** y copia el endpoint del recurso restaurado. [Restaurar instancia RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RestoreFromSnapshot.html) · [Restaurar Aurora](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-restore-snapshot.html).
-
-<details>
-<summary>Comandos de recuperación en EC2, después de restaurar RDS</summary>
-
-Pega el bloque en **EC2 como administrador**. En el editor, cambia `DB_HOST` al endpoint restaurado y `DB_PORT` si cambió. Conserva el esquema y el certificado. Los directorios `app.pre43-...` y `4_3.pre43-...` que dejó la actualización conservan los archivos anteriores.
-
-```powershell
-$ErrorActionPreference = 'Stop'
-Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
-$pythonVuelta43 = (Resolve-Path -LiteralPath '.\.venv\Scripts\python.exe').Path
-$respaldo43 = (Resolve-Path -LiteralPath (Read-Host 'Ruta de respaldo que imprimió la actualización')).Path
-if (-not (Test-Path -LiteralPath (Join-Path $respaldo43 'app\main.py'))) { throw 'Falta el respaldo de app.' }
-$envVuelta43 = Join-Path $respaldo43 '.env.recuperacion'
-Copy-Item -LiteralPath (Join-Path $respaldo43 '.env') -Destination $envVuelta43 -Force
-Start-Process notepad.exe -ArgumentList ('"{0}"' -f $envVuelta43) -Wait
-
-$hostVuelta43 = (Read-Host 'Endpoint exacto del RDS restaurado').Trim()
-Push-Location -LiteralPath $respaldo43
-try {
-    $hostGuardado43 = & $pythonVuelta43 -B -c 'import sys; from app.config import Settings; print(Settings(_env_file=sys.argv[1]).db_host)' $envVuelta43
-    if ($LASTEXITCODE -ne 0) { throw 'Comprueba el .env de recuperación.' }
-} finally {
-    Pop-Location
-}
-if (-not $hostVuelta43 -or $hostGuardado43 -ne $hostVuelta43) {
-    throw 'Guarda el endpoint restaurado en DB_HOST antes de recuperar.'
-}
-
-$tarea43 = 'VehiculoIoT-API'
-$configTarea43 = Get-ScheduledTask -TaskName $tarea43
-$sid43 = $configTarea43.Principal.UserId
-if ($sid43 -notmatch '^S-\d-') {
-    $sid43 = [System.Security.Principal.NTAccount]::new($sid43).Translate([System.Security.Principal.SecurityIdentifier]).Value
-}
-Disable-ScheduledTask -TaskName $tarea43 | Out-Null
-if ($configTarea43.State -eq 'Running') { Stop-ScheduledTask -TaskName $tarea43 }
-Start-Sleep -Seconds 3
-if (Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue) { throw 'El puerto 8000 sigue en uso.' }
-
-$fecha43 = Get-Date -Format 'yyyyMMdd-HHmmss'
-if (Test-Path -LiteralPath '.\app') { Rename-Item -LiteralPath '.\app' -NewName "app.fallo43-$fecha43" }
-Copy-Item -LiteralPath (Join-Path $respaldo43 'app') -Destination '.\app' -Recurse
-Copy-Item -LiteralPath $envVuelta43 -Destination '.\.env' -Force
-icacls.exe '.\app' /grant "*$($sid43):(OI)(CI)(RX)" /T /Q
-if ($LASTEXITCODE -ne 0) { throw 'Comprueba los permisos de app.' }
-icacls.exe '.\.env' /grant "*$($sid43):(R)" /Q
-if ($LASTEXITCODE -ne 0) { throw 'Comprueba los permisos del .env.' }
-Enable-ScheduledTask -TaskName $tarea43 | Out-Null
-Start-ScheduledTask -TaskName $tarea43
-Start-Sleep -Seconds 5
-Invoke-RestMethod 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
-```
-
-Si ya publicaste Pages con 4.3, revierte su PR en GitHub para volver a publicar la web anterior.
-
-</details>
-
-El ensayo en una copia de RDS, la AMI de EC2 y la configuración de un dominio nuevo se consultan cuando corresponda. [Guía detallada de 4.3](https://github.com/Bauliere/vehiculo_Iot/blob/c446b60c4bd6a68fe98e300458decf3cb64e7105/docs/guia/DESPLEGAR_4_3.md).
+- ZIP de código del commit aprobado: [0c4071139bf9a03f8750862375d3ded301c1ffea](https://github.com/Bauliere/vehiculo_Iot/archive/0c4071139bf9a03f8750862375d3ded301c1ffea.zip)
+- Guía de la actividad y estado de pruebas: [ACTIVIDAD_4_3.md](ACTIVIDAD_4_3.md)
+- Script de despliegue productivo: `tools/actualizar_ec2_4_3.ps1`
+- Herramienta de migración: `tools/migrar_4_3.py`
+- Migraciones: `migrations/4_3/001_modelos_unidades.*.sql` y `002_plataforma_comercial.*.sql`
+- Consola RDS: [AWS RDS](https://console.aws.amazon.com/rds/)

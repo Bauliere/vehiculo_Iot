@@ -120,9 +120,6 @@ html[data-pilot-fullscreen] .app-footer {
   place-items: center;
   width: clamp(82px, min(19dvh, 23vw), 132px);
   aspect-ratio: 1.22;
-  border: 1px solid color-mix(in srgb, var(--fausto-neon) 20%, #141018);
-  border-radius: 16px;
-  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--fausto-neon) 17%, #120f17), #120f17 75%);
 }
 
 :root[data-theme="forest"] .fausto-avatar { --fausto-neon: #45d5a4; --fausto-core: #dffff0; }
@@ -133,7 +130,7 @@ html[data-pilot-fullscreen] .app-footer {
 :root[data-theme="white-red"] .fausto-avatar { --fausto-neon: #ff364c; --fausto-core: #ffe5e7; }
 
 .fausto-avatar img {
-  width: 71%;
+  width: 82%;
   height: auto;
   object-fit: contain;
   filter: drop-shadow(0 0 6px var(--fausto-neon));
@@ -141,7 +138,7 @@ html[data-pilot-fullscreen] .app-footer {
 }
 
 .fausto-avatar:has(#fausto-electric[data-ready]) img { opacity: .08; }
-#fausto-electric { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; }
+#fausto-electric { position: absolute; inset: 0; }
 
 .fausto-chat {
   flex: 1 1 0;
@@ -273,7 +270,7 @@ html[data-pilot-fullscreen] .app-footer {
   #fausto-open { --fausto-dock-icon-size: 24px; }
   .header-tools .icon-button { width: 32px; height: 32px; }
   .fausto-dialog { padding: 10px 14px; gap: 6px; }
-  .fausto-avatar { width: clamp(60px, 23dvh, 88px); border-radius: 12px; }
+  .fausto-avatar { width: clamp(60px, 23dvh, 88px); }
   .fausto-heading h2 { font-size: 17px; }
   .fausto-heading p { display: none; }
 }

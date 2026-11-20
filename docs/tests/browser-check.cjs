@@ -204,7 +204,8 @@ let browser, activePage;
   await page.waitForFunction(() => document.querySelectorAll('.target-cursor__corner').length ===
     (matchMedia('(hover: hover) and (pointer: fine)').matches ? 4 : 0));
   assert.equal(await page.locator('.rb-flip-surface .flip-card').count(), 2);
-  assert.equal(await page.locator('#session-open, #session-card, #monitor-refresh, .control-dock #fausto-open').count(), 0);
+  assert.equal(await page.locator('#session-open, #session-card, #monitor-refresh').count(), 0);
+  assert.equal(await page.locator('.control-dock #fausto-open').count(), 1);
   assert.equal(await page.locator('#refresh-button').isVisible(), false);
   await page.locator('#background-button').click();
   await page.waitForFunction(() => document.querySelector('#slats-effect canvas'));
@@ -402,6 +403,11 @@ let browser, activePage;
   await page.locator('#fausto-open').click();
   await page.locator('#fausto-dialog[open]').waitFor();
   await page.locator('#fausto-electric[data-ready]').waitFor();
+  const avatar = await page.locator('.fausto-avatar').evaluate(el => {
+    const style = getComputedStyle(el);
+    return [style.backgroundColor, style.backgroundImage, style.borderTopWidth];
+  });
+  assert.deepEqual(avatar, ['rgba(0, 0, 0, 0)', 'none', '0px']);
   const chat = page.locator('#fausto-chat');
   assert.equal(await chat.evaluate(el => getComputedStyle(el).overflowY), 'auto');
   const enterInstruction = async text => {

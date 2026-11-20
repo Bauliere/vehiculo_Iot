@@ -24,21 +24,8 @@
 #background-button svg,
 #account-button svg { width: 20px; height: 20px; }
 
-.control-functions { min-width: 0; align-self: start; }
-.guided-controls:not(:has(#commands-open:not([hidden]))) { grid-template-columns: minmax(0, 1fr); }
-.fausto-launcher { display: flex; justify-content: end; padding-inline: 4px; }
-#fausto-open {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  gap: 8px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--text);
-  background: transparent;
-  font-size: .875rem;
+.guided-controls:has(#commands-open:not([hidden])) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .unit-switcher {
@@ -72,7 +59,7 @@
 .unit-access .btn { flex: 0 0 auto; min-height: 44px; }
 html[data-unit-locked] #monitor-view,
 html[data-unit-locked] .control-notice { display: none; }
-html[data-unit-locked] #control-view :is(.control-sidebar, .control-functions) { opacity: .65; }
+html[data-unit-locked] #control-view :is(.control-sidebar, .control-dock) { opacity: .65; }
 
 html:is([data-view="admin"], [data-view="showroom"]) { height: auto; overflow: auto; }
 html:is([data-view="admin"], [data-view="showroom"]) body { height: auto; min-height: 100dvh; overflow: visible; }
@@ -236,21 +223,20 @@ html:is([data-view="admin"], [data-view="showroom"]) .main-content { display: bl
   .mechanics { padding-block: 4px; }
   .joystick-wrap { --stick-size: min(36vw, 21dvh, 170px); }
   .box-lever { height: calc(min(36vw, 21dvh, 170px) + 24px); }
+  .unit-switcher { margin-block: 0; }
+  .unit-switcher .form-select { padding-block: 4px; }
 }
 
 @media (max-width: 600px), (max-height: 490px) and (pointer: coarse) {
-  html[data-commercial]:is([data-view="control"], [data-view="monitor"]):not([data-pilot-fullscreen]) { height: auto; overflow: auto; }
-  html[data-commercial]:is([data-view="control"], [data-view="monitor"]):not([data-pilot-fullscreen]) body { height: auto; overflow: visible; }
-  html[data-commercial]:is([data-view="control"], [data-view="monitor"]):not([data-pilot-fullscreen]) .app-shell {
+  html[data-commercial][data-unit-locked]:is([data-view="control"], [data-view="monitor"]) { height: auto; overflow: auto; }
+  html[data-commercial][data-unit-locked]:is([data-view="control"], [data-view="monitor"]) body { height: auto; overflow: visible; }
+  html[data-commercial][data-unit-locked]:is([data-view="control"], [data-view="monitor"]) .app-shell {
     height: auto;
     min-height: 100dvh;
   }
 }
 
 @media (max-width: 900px) and (orientation: landscape), (max-height: 650px) and (orientation: landscape) {
-  .control-functions { grid-column: 2; grid-row: 3; }
-  .fausto-launcher { padding: 0; }
-  #fausto-open { min-height: 38px; padding-inline: 4px; }
   html[data-view="admin"] .commercial-view, html[data-view="showroom"] .commercial-view { overflow: visible; }
 }
 
@@ -267,7 +253,7 @@ html:is([data-view="admin"], [data-view="showroom"]) .main-content { display: bl
 }
 
 @media (hover: hover) and (pointer: fine) {
-  #fausto-open:hover, .commercial-menu button:hover { color: var(--accent-strong); }
+  .commercial-menu button:hover { color: var(--accent-strong); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
