@@ -27,7 +27,7 @@ function removeRow(button, row, list, afterChange) {
 
 export function modelForm(row) {
   const legend = node('legend', 'Capacidades del hardware');
-  const help = node('p', 'Usa los nombres y códigos del firmware. Incluye DETENER. Marca sólo los movimientos permitidos en exhibición.', 'commercial-muted');
+  const help = node('p', 'Usa los nombres y códigos del firmware e incluye DETENER. Para guardar un giro o una subida con duración propia, ve a Demostraciones → Nuevo movimiento.', 'commercial-muted');
   const list = node('ul', '', 'commercial-steps');
   const add = action('Agregar capacidad', () => append({}).querySelector('input').focus());
   const append = data => {
@@ -78,6 +78,22 @@ export function customerForm(row) {
       field('clave', row.id_cliente ? 'Nueva contraseña (opcional)' : 'Contraseña', { type: 'password', required: !row.id_cliente,
         minLength: 12, maxLength: 128, autocomplete: 'new-password', note: 'Al menos 12 caracteres.' }), activeField(row)],
     payload: data => ({ nombre: data.get('nombre'), correo: data.get('correo'), activo: data.has('activo'), clave: data.get('clave') || null }),
+  };
+}
+
+export function movementForm(commands) {
+  const options = [['', 'Selecciona un movimiento'], ...commands.map(command => [command.id_comando, commandLabel(command)])];
+  return {
+    fields: [
+      node('p', 'El movimiento se guarda como una demostración de un solo paso y aparece en Recorridos. Ajusta el tiempo según la respuesta del carrito.', 'commercial-muted'),
+      ...namedFields({}, 80),
+      group('commercial-form-grid',
+        field('id_comando', 'Movimiento base', { options, required: true }),
+        field('duracion_ms', 'Duración (ms)', { type: 'number', required: true, min: 1, max: 10000, value: 500 })),
+      activeField({}),
+    ],
+    payload: data => ({ nombre: data.get('nombre'), descripcion: data.get('descripcion') || null, activo: data.has('activo'),
+      pasos: [{ id_comando: Number(data.get('id_comando')), duracion_ms: Number(data.get('duracion_ms')), pausa_ms: 0 }] }),
   };
 }
 

@@ -1,9 +1,10 @@
 import { action, field, group, node, notice, paging, table } from './commercial-ui.js';
-import { customerForm, demoForm, modelForm, STATUSES, unitForm } from './commercial-forms.js';
+import { customerForm, demoForm, modelForm, movementForm, STATUSES, unitForm } from './commercial-forms.js';
 
 const ADMIN_SECTIONS = { summary: 'Resumen', models: 'Modelos', units: 'Unidades', customers: 'Clientes', demos: 'Demostraciones', audit: 'Auditoría' };
 const BUYER_SECTIONS = { own: 'Mis vehículos', demos: 'Mis demostraciones' };
 const STATES = Object.fromEntries(STATUSES);
+const TIMED_MOVEMENTS = new Set(['AVANZAR', 'RETROCEDER', 'GIRAR_IZQUIERDA', 'GIRAR_DERECHA', 'SUBIR_CAJA', 'BAJAR_CAJA']);
 const METRICS = { modelos: 'Modelos activos', unidades: 'Unidades registradas', asignadas: 'Unidades asignadas',
   exhibicion_disponible: 'Disponibles para prueba', clientes: 'Clientes activos', demos: 'Demostraciones activas',
   conectadas: 'Dispositivos conectados', reservas: 'Reservas abiertas' };
@@ -254,6 +255,15 @@ export class CommercialView {
       selector.addEventListener('change', event => { this.unit = Number(event.target.value); void this.open().then(() => this.content.querySelector('select')?.focus()); });
       const owned = data.demos.filter(demo => this.account.rol === 'administrador' ? demo.id_cliente_demo === null : demo.id_cliente_demo === this.account.id_cliente);
       this.toolbar.append(action('Nueva demostración', () => this.editDemo(id, data), { primary: true }));
+      if (this.account.rol === 'administrador') {
+        const commands = data.comandos.filter(command => TIMED_MOVEMENTS.has(command.nombre));
+        const createMovement = action('Nuevo movimiento', () => {
+          this.form('Nuevo movimiento', movementForm(commands), `/unidades/${id}/editor`, null,
+            'Movimiento guardado en Recorridos.', () => this.onDemosChange(id));
+        });
+        createMovement.disabled = commands.length === 0;
+        this.toolbar.append(createMovement);
+      }
       this.content.append(group('commercial-search', selector), owned.length ? table(['Recorrido', 'Estado', ''], owned.map(row => [row.nombre,
         row.activo ? 'Activo' : 'Inactivo', group('commercial-actions', action('Editar', () => this.editDemo(id, data, row.id_demo)))]))
         : p('Todavía no hay demostraciones para editar en esta unidad.', true));

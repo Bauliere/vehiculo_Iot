@@ -2,6 +2,7 @@ import { commandLabel } from '../domain/catalog.js';
 import { action, group, icon, node, notice, paging } from './commercial-ui.js';
 
 const PAGE_SIZE = 12;
+const LOAD_TRUCK_PHOTO = new URL('../../images/maquina-de-carga.png', import.meta.url).href;
 
 export class Showroom {
   constructor(document, api, openSocket) {
@@ -47,14 +48,23 @@ export class Showroom {
     article.firstChild.setAttribute('aria-hidden', 'true');
     const heading = group('showroom-card-title', icon('catalog'), node('h2', model.nombre));
     article.append(heading);
-    if (typeof model.foto_url === 'string' && model.foto_url.startsWith('https://')) {
+    const photoUrl = model.foto_url?.startsWith('https://') ? model.foto_url
+      : model.id_modelo === 1 ? LOAD_TRUCK_PHOTO : null;
+    if (photoUrl) {
       const photo = node('img', '', 'showroom-photo');
+      const frame = group('showroom-photo-frame', photo);
+      if (model.id_modelo === 1) {
+        const effect = node('div', '', 'showroom-photo-effect');
+        effect.setAttribute('aria-hidden', 'true');
+        frame.append(effect);
+      }
       photo.alt = model.nombre;
       photo.loading = 'lazy';
+      photo.decoding = 'async';
       photo.referrerPolicy = 'no-referrer';
-      photo.addEventListener('error', () => photo.remove(), { once: true });
-      photo.src = model.foto_url;
-      article.append(photo);
+      photo.addEventListener('error', () => frame.remove(), { once: true });
+      photo.src = photoUrl;
+      article.append(frame);
     }
     if (model.descripcion) article.append(node('p', model.descripcion));
     if (model.capacidades.length) article.append(node('p', model.capacidades.map(item => commandLabel(item.nombre)).join(' · '), 'commercial-muted'));

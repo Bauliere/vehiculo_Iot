@@ -67,6 +67,25 @@ function Fausto({ host, logo, accent, paper }) {
   />;
 }
 
+function ShowroomPhoto({ host, src }) {
+  useRestoreFallback(host);
+  return <HalftoneReveal
+    src={src}
+    fit="contain"
+    mode="duotone"
+    inkColor="#120f17"
+    paperColor="#f4f1ea"
+    accentColor="#a78bfa"
+    cellSize={2}
+    contrast={1.15}
+    revealRadius={200}
+    softness={0.6}
+    linger={1}
+    intro={false}
+    onReady={ready => host.toggleAttribute('data-ready', ready)}
+  />;
+}
+
 function FlipSurface({ turned, compact }) {
   return <FlipCard
     decorative
@@ -92,7 +111,8 @@ function withVisualRoot(host) {
     onUncaughtError: () => host.removeAttribute('data-ready')
   });
   return {
-    render: component => root.render(<VisualBoundary>{component}</VisualBoundary>)
+    render: component => root.render(<VisualBoundary>{component}</VisualBoundary>),
+    unmount: () => root.unmount()
   };
 }
 
@@ -137,6 +157,26 @@ export function mountVisuals(document) {
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
   } catch { /* Se conserva la interfaz estática. */ }
 
+  const showroom = document.getElementById('showroom-models');
+  const photos = new Map();
+  const syncPhotos = () => {
+    const frames = webgl && !motion.matches && html.dataset.view === 'showroom'
+      ? [...showroom.querySelectorAll('.showroom-photo-frame:has(> .showroom-photo-effect)')] : [];
+    for (const [frame, root] of photos) {
+      if (frames.includes(frame)) continue;
+      root.unmount();
+      photos.delete(frame);
+    }
+    for (const frame of frames) {
+      if (photos.has(frame)) continue;
+      const host = frame.querySelector('.showroom-photo-effect');
+      const root = withVisualRoot(host);
+      root.render(<ShowroomPhoto host={host} src={frame.querySelector('img').src} />);
+      photos.set(frame, root);
+    }
+  };
+  new MutationObserver(syncPhotos).observe(showroom, { childList: true, subtree: true });
+
   const values = () => {
     const style = getComputedStyle(html);
     return Object.fromEntries(paletteKeys.map(key => [key, style.getPropertyValue(`--${key}`).trim()]));
@@ -160,6 +200,7 @@ export function mountVisuals(document) {
   };
 
   const sync = () => {
+    syncPhotos();
     const palette = values();
     const active = webgl && !motion.matches;
     const animate = !motion.matches;
