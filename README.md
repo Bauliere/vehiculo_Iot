@@ -23,7 +23,9 @@ Para una API local en el puerto 8000 usa [127.0.0.1:5500/?api=local](http://127.
 | --- | --- |
 | Administrador | Inventario, clientes, asignaciones, demostraciones de empresa y auditoría. Control y monitoreo cuando un comprador autoriza soporte. |
 | Usuario | Unidades asignadas, Control, Monitoreo, demos privadas y autorización temporal de soporte. |
-| Invitado | Catálogo público y reserva exclusiva de una unidad de exhibición durante un minuto. |
+| Invitado | Catálogo público y reserva exclusiva de una unidad habilitada hasta por 15 minutos. |
+
+La configuración `EXHIBITION_ASSIGNED_UNIT_IDS` permite ofrecer unidades concretas en el catálogo mientras conservan su asignación. Durante la reserva, el comprador puede consultar la unidad y el invitado tiene el mando de movimiento. [Configuración en EC2](docs/guia/DESPLEGAR_4_3.md#actualizar-ec2-para-exhibir-mc-001-con-comprador-asignado).
 
 ## Manejo y monitoreo
 

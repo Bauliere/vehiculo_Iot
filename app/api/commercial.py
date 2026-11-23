@@ -148,8 +148,8 @@ async def dashboard(request: Request, actor: Admin):
     metrics = await run_db(ops.fleet.dashboard)
     devices = set(ops.devices)
     metrics.update(conectadas=len(devices), exhibicion_disponible=0)
-    if ops.display_enabled:
-        metrics["exhibicion_disponible"] = await run_db(ops.exhibition.available, devices - ops.pending_stops)
+    if ops.display_enabled and ops.reservations_loaded:
+        metrics["exhibicion_disponible"] = await run_db(ops.exhibition.available, devices - ops.pending_stops - ops.occupied_units())
     return metrics
 
 

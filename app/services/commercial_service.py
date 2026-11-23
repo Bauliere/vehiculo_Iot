@@ -31,13 +31,14 @@ class CommercialService:
         self.runtime = runtime
         self.fleet = FleetStore(runtime.database)
         self.identity = IdentityStore(runtime.database)
-        self.exhibition = ExhibitionStore(runtime.database)
+        self.exhibition = ExhibitionStore(runtime.database, runtime.settings.exhibition_assigned_unit_ids)
         # El mismo worker serializa permisos, entregas, reservas y publicación de órdenes.
         self.gate = asyncio.Lock()
         self.channels = {}
         self.devices = {}
         self.operators = {}
         self.reservations = {}
+        self.reservations_loaded = False
         self.pending_stops = set()
         self.limits = {}
         self.task = None
@@ -76,6 +77,8 @@ class CommercialService:
         raise ApiError(403, "Esta unidad requiere asignación o autorización de soporte vigente.")
 
     def require_connected(self, vehicle_id):
+        if not self.reservations_loaded:
+            raise ApiError(503, "Espera a que se recuperen las reservas de exhibición.")
         if vehicle_id in self.pending_stops:
             raise ApiError(409, "Hay una detención pendiente. Espera la recuperación del vehículo.")
         if vehicle_id not in self.devices:
@@ -83,6 +86,8 @@ class CommercialService:
 
     def claim(self, actor, vehicle_id, channel_id):
         self.require_connected(vehicle_id)
+        if actor.role != "invitado" and vehicle_id in self.reservations:
+            raise ApiError(409, "La unidad tiene una reserva de invitado activa.")
         channel = self.channels.get(channel_id)
         if not channel or channel.actor.digest != actor.digest or channel.vehicle_id != vehicle_id or channel.expires <= utcnow():
             raise ApiError(409, "Conecta el canal WSS de esta pestaña antes de enviar órdenes.")
@@ -154,18 +159,27 @@ class CommercialService:
         if not self.display_enabled:
             raise ApiError(403, "Las pruebas de exhibición están pausadas por la empresa.")
         unit = await run_db(self.fleet.unit, vehicle_id)
-        if unit["estado_comercial"] != "exhibicion":
+        if unit["estado_comercial"] != "exhibicion" and not (
+            unit["estado_comercial"] == "vendida" and str(vehicle_id) in self.exhibition.assigned_unit_ids.split(",")
+        ):
             raise ApiError(404, "La unidad de exhibición no existe.")
         self.require_connected(vehicle_id)
+        if vehicle_id in self.occupied_units():
+            raise ApiError(409, "La unidad está en uso. Intenta de nuevo cuando se libere el control.")
         data = await run_db(self.exhibition.reserve, vehicle_id)
         self.reservations[vehicle_id] = data["vence"].replace(tzinfo=None)
         return data
 
+    def occupied_units(self):
+        return set(self.reservations) | set(self.operators) | set(self.runtime.demos.runs)
+
     def filter_availability(self, models):
+        occupied = self.occupied_units()
         for model in models:
             for unit in model["unidades"]:
                 vehicle_id = unit["id_vehiculo"]
-                unit["disponible"] = (self.display_enabled and not unit["ocupada"] and vehicle_id in self.devices
+                unit["ocupada"] = bool(unit["ocupada"] or vehicle_id in occupied)
+                unit["disponible"] = (self.display_enabled and self.reservations_loaded and not unit["ocupada"] and vehicle_id in self.devices
                                        and vehicle_id not in self.pending_stops)
         return models
 
@@ -212,7 +226,7 @@ class CommercialService:
                 if not self.display_enabled:
                     raise ApiError(403, "La exhibición está pausada.")
                 actor = await run_db(self.exhibition.guest, token)
-                if actor.vehicle_id != vehicle_id or self.reservations.get(vehicle_id, actor.expires) <= utcnow():
+                if actor.vehicle_id != vehicle_id or self.reservations.get(vehicle_id) != actor.expires:
                     raise ApiError(403, "La reserva no corresponde a esta unidad.")
                 if any(channel.actor.digest == actor.digest for channel in self.channels.values()):
                     raise ApiError(409, "La prueba ya tiene una pestaña conectada.")
@@ -310,14 +324,13 @@ class CommercialService:
             await self.manager.close_socket(websocket, 1008 if error.status_code < 500 else 1011)
 
     async def supervise(self):
-        recovered = False
         while True:
             try:
                 async with self.gate:
-                    if not recovered:
+                    if not self.reservations_loaded:
                         for row in await run_db(self.exhibition.open_reservations):
                             self.reservations.setdefault(row["id_vehiculo"], utcnow())
-                        recovered = True
+                        self.reservations_loaded = True
                     now = utcnow()
                     await self.revoke(lambda channel: channel.actor.role != "invitado" and channel.expires <= now)
                     for vehicle_id, expires in tuple(self.reservations.items()):

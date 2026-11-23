@@ -3,6 +3,7 @@
 import os
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from secrets import token_hex
 
 import pymysql
@@ -204,3 +205,54 @@ class CommercialIntegration(unittest.TestCase):
             self.request("GET", "/plataforma/dashboard", 200, headers=admin)
         with self.database.session() as db:
             self.assertIsNone(first(db, "SELECT id_reserva FROM reservas_iot WHERE unidad_reservada=%s", (unit,)))
+
+    def test_assigned_unit_can_be_shared_without_removing_its_buyer(self):
+        admin = self.login(self.email)
+        model = self.model(admin)
+        unit = self.unit(admin, model, "Unidad compartida", "disponible")
+        buyer_id, buyer = self.buyer(admin, "Comprador")
+        self.request("PUT", f"/plataforma/unidades/{unit}/asignacion", 200, headers=admin,
+                     body={"id_cliente": buyer_id})
+        device = self.ops.identity.set_device(unit)
+        reserve_path = f"/plataforma/exhibicion/{unit}/sesiones"
+        movement_path = f"/vehiculos/{unit}/movimientos"
+        self.request("POST", reserve_path, 404)
+        self.ops.exhibition.assigned_unit_ids = str(unit)
+
+        def catalog_unit():
+            models = self.request("GET", "/plataforma/catalogo?limit=100", 200)
+            return next(row for item in models if item["id_modelo"] == model for row in item["unidades"] if row["id_vehiculo"] == unit)
+
+        with self.client.websocket_connect(f"/ws/vehiculos/{unit}", headers={"X-Device-Key": device}) as hardware:
+            hardware.receive_json()
+            self.assertTrue(catalog_unit()["disponible"])
+            with self.ws(unit, buyer) as owner:
+                owner.receive_json()
+                buyer_channel = {**buyer, "X-IoT-Channel": owner.receive_json()["canal"]}
+                reservation = self.request("POST", reserve_path, 201)
+                expires = datetime.fromisoformat(reservation["vence"])
+                self.assertGreater(expires - datetime.now(timezone.utc), timedelta(minutes=14, seconds=55))
+                self.assertLessEqual(expires - datetime.now(timezone.utc), timedelta(minutes=15))
+                self.assertEqual([row["id_vehiculo"] for row in self.request(
+                    "GET", "/plataforma/mis-unidades", 200, headers=buyer)], [unit])
+                self.request("POST", reserve_path, 409)
+                self.assertTrue(catalog_unit()["ocupada"])
+                advance = next(row["id_comando"] for row in reservation["comandos"] if row["nombre"] == "AVANZAR")
+                movement = {"id_comando": advance, "origen": "API"}
+                self.request("POST", movement_path, 409, headers=buyer_channel, body=movement)
+                guest = {"Authorization": "Bearer " + reservation["token"]}
+                with self.ws(unit, guest) as visitor:
+                    guest_channel = {**guest, "X-IoT-Channel": visitor.receive_json()["canal"]}
+                    self.request("POST", "/plataforma/exhibicion/ordenes", 200, headers=guest_channel,
+                                 body={"id_comando": advance})
+                    self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
+                    self.request("DELETE", "/plataforma/exhibicion/sesion", 204, headers=guest)
+                    self.assertEqual(visitor.receive()["code"], 1008)
+                self.assertEqual(hardware.receive_json()["comando"], "DETENER")
+                self.assertTrue(catalog_unit()["disponible"])
+                self.request("POST", movement_path, 200, headers=buyer_channel, body=movement)
+                self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
+                self.request("POST", reserve_path, 409)
+            self.assertEqual(hardware.receive_json()["comando"], "DETENER")
+
+        self.assertEqual(self.ops.fleet.unit(unit)["id_cliente"], buyer_id)

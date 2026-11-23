@@ -5,12 +5,15 @@ from app.errors import ApiError
 from app.models.commercial import GUEST_COMMANDS
 from app.services.commercial_store import Actor, as_utc, audit, first, query, token_bytes, utcnow
 
-SESSION_SECONDS = 60
+SESSION_SECONDS = 15 * 60
+ELIGIBLE_UNIT = """v.activo=1 AND m.activo=1 AND (
+    v.estado_comercial='exhibicion' OR (v.estado_comercial='vendida' AND FIND_IN_SET(v.id_vehiculo,%s)>0))"""
 
 
 class ExhibitionStore:
-    def __init__(self, database):
+    def __init__(self, database, assigned_unit_ids=""):
         self.database = database
+        self.assigned_unit_ids = assigned_unit_ids
 
     @staticmethod
     def _commands(session, vehicle_id):
@@ -25,19 +28,18 @@ class ExhibitionStore:
         with self.database.session() as session:
             return self._commands(session, vehicle_id)
 
-    @staticmethod
-    def _display_units(session, limit, offset, model_id):
-        return query(session, """SELECT v.id_vehiculo,v.nombre,v.id_modelo,r.id_reserva IS NOT NULL AS ocupada
+    def _display_units(self, session, limit, offset, model_id):
+        return query(session, f"""SELECT v.id_vehiculo,v.nombre,v.id_modelo,r.id_reserva IS NOT NULL AS ocupada
             FROM vehiculos v JOIN modelos_vehiculo m USING (id_modelo)
             LEFT JOIN reservas_iot r ON r.unidad_reservada=v.id_vehiculo
-            WHERE v.activo=1 AND m.activo=1 AND v.estado_comercial='exhibicion' AND (%s IS NULL OR m.id_modelo=%s)
+            WHERE {ELIGIBLE_UNIT} AND m.id_modelo=%s
               AND EXISTS (SELECT 1 FROM comandos c JOIN capacidades_modelo_iot k
                 ON k.id_modelo=v.id_modelo AND k.codigo=c.codigo AND k.nombre=c.nombre
                 WHERE c.id_vehiculo=v.id_vehiculo AND c.activo=1 AND c.nombre='DETENER')
               AND EXISTS (SELECT 1 FROM comandos c JOIN capacidades_modelo_iot k
                 ON k.id_modelo=v.id_modelo AND k.codigo=c.codigo AND k.nombre=c.nombre
                 WHERE c.id_vehiculo=v.id_vehiculo AND c.activo=1 AND k.exhibicion=1 AND c.nombre<>'DETENER')
-            ORDER BY v.nombre,v.id_vehiculo LIMIT %s OFFSET %s""", (model_id, model_id, limit, offset))
+            ORDER BY v.nombre,v.id_vehiculo LIMIT %s OFFSET %s""", (self.assigned_unit_ids, model_id, limit, offset))
 
     def catalog(self, limit, offset):
         with self.database.session() as session:
@@ -53,9 +55,9 @@ class ExhibitionStore:
         with self.database.session() as session:
             count = 0
             for vehicle_id in vehicle_ids:
-                row = first(session, """SELECT v.id_vehiculo FROM vehiculos v JOIN modelos_vehiculo m USING (id_modelo)
+                row = first(session, f"""SELECT v.id_vehiculo FROM vehiculos v JOIN modelos_vehiculo m USING (id_modelo)
                     LEFT JOIN reservas_iot r ON r.unidad_reservada=v.id_vehiculo WHERE v.id_vehiculo=%s
-                    AND r.id_reserva IS NULL AND v.activo=1 AND m.activo=1 AND v.estado_comercial='exhibicion'""", (vehicle_id,))
+                    AND r.id_reserva IS NULL AND {ELIGIBLE_UNIT}""", (vehicle_id, self.assigned_unit_ids))
                 if row and self._ready(self._commands(session, vehicle_id)):
                     count += 1
             return count
@@ -69,9 +71,9 @@ class ExhibitionStore:
         token = "g_" + secrets.token_urlsafe(32)
         expires = utcnow() + timedelta(seconds=SESSION_SECONDS)
         with self.database.session(write=True) as session:
-            unit = first(session, """SELECT v.estado_comercial,v.activo,m.activo AS modelo_activo
-                FROM vehiculos v JOIN modelos_vehiculo m USING (id_modelo) WHERE id_vehiculo=%s FOR UPDATE""", (vehicle_id,))
-            if not unit or unit["estado_comercial"] != "exhibicion" or not unit["activo"] or not unit["modelo_activo"]:
+            unit = first(session, f"""SELECT v.id_vehiculo FROM vehiculos v JOIN modelos_vehiculo m USING (id_modelo)
+                WHERE v.id_vehiculo=%s AND {ELIGIBLE_UNIT} FOR UPDATE""", (vehicle_id, self.assigned_unit_ids))
+            if not unit:
                 raise ApiError(404, "No hay una unidad de exhibición disponible con ese identificador.")
             if first(session, "SELECT id_reserva FROM reservas_iot WHERE unidad_reservada=%s", (vehicle_id,)):
                 raise ApiError(409, "La unidad está en uso. Intenta de nuevo cuando termine la prueba.")
@@ -87,10 +89,10 @@ class ExhibitionStore:
         digest = token_bytes(token, "g_")
         if digest:
             with self.database.session() as session:
-                row = first(session, """SELECT r.id_reserva,r.id_vehiculo,r.vence FROM reservas_iot r
+                row = first(session, f"""SELECT r.id_reserva,r.id_vehiculo,r.vence FROM reservas_iot r
                     JOIN vehiculos v ON v.id_vehiculo=r.id_vehiculo JOIN modelos_vehiculo m USING (id_modelo)
                     WHERE r.huella=%s AND r.finalizada IS NULL AND r.vence>UTC_TIMESTAMP(6)
-                    AND v.activo=1 AND m.activo=1 AND v.estado_comercial='exhibicion'""", (digest,))
+                    AND {ELIGIBLE_UNIT}""", (digest, self.assigned_unit_ids))
             if row:
                 return Actor("invitado", digest, row["vence"], vehicle_id=row["id_vehiculo"], reservation_id=row["id_reserva"])
         raise ApiError(401, "La prueba ha terminado o la sesión no es válida.")

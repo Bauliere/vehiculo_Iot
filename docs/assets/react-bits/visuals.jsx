@@ -77,7 +77,7 @@ function ShowroomPhoto({ host, src, accent }) {
     paperColor="#08080b"
     accentColor={accent}
     transparentBackground
-    cellSize={2}
+    cellSize={6}
     contrast={1.15}
     revealRadius={200}
     softness={0.6}

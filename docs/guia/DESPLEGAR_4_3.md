@@ -19,30 +19,69 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
 
 Si la consulta local funciona, comprueba la IP pública de la instancia y la tarea de Caddy. Si la API local falla, revisa `Get-ScheduledTaskInfo -TaskName 'VehiculoIoT-API'` y `Get-Content -LiteralPath 'C:\Users\Administrator\Desktop\websocket_iot\logs\api.log' -Tail 30`.
 
-## Probar como invitado
+## Actualizar EC2 para exhibir MC-001 con comprador asignado
 
-Con una sola unidad, haz la prueba de comprador y la de invitado por separado. En PowerShell del escritorio remoto:
+Copia `Actualizacion-Invitados-15min-EC2.zip` al Escritorio remoto, dentro de `C:\Users\Administrator\Desktop\websocket_iot`. Este paquete actualiza el backend para permitir reservas en las unidades asignadas que indiques. En PowerShell del escritorio remoto:
 
 ```powershell
 Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
+$ErrorActionPreference = 'Stop'
+$paqueteInvitados = Get-Item -LiteralPath '.\Actualizacion-Invitados-15min-EC2.zip'
+$marcaInvitados = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+$respaldoInvitados = New-Item -ItemType Directory -Path ".\respaldo-invitados-$marcaInvitados"
+$temporalInvitados = Join-Path $env:TEMP "vehiculo-invitados-$marcaInvitados"
+Expand-Archive -LiteralPath $paqueteInvitados.FullName -DestinationPath $temporalInvitados
+$archivosInvitados = 'app\config.py','app\api\commercial.py','app\services\commercial_service.py','app\services\exhibition_store.py'
+foreach ($rutaInvitados in $archivosInvitados) {
+    $origenInvitados = Join-Path $temporalInvitados $rutaInvitados
+    Get-Item -LiteralPath $origenInvitados | Out-Null
+    $copiaInvitados = Join-Path $respaldoInvitados.FullName $rutaInvitados
+    New-Item -ItemType Directory -Path (Split-Path -Parent $copiaInvitados) -Force | Out-Null
+    Copy-Item -LiteralPath $rutaInvitados -Destination $copiaInvitados
+}
+Copy-Item -LiteralPath '.env' -Destination (Join-Path $respaldoInvitados.FullName '.env')
+foreach ($rutaInvitados in $archivosInvitados) {
+    Copy-Item -LiteralPath (Join-Path $temporalInvitados $rutaInvitados) -Destination $rutaInvitados -Force
+}
 notepad .env
 ```
 
-En `.env` cambia `EXHIBITION_ENABLED` a `true` y conserva `PUBLIC_CONTROL_ENABLED=false`. Guarda y ejecuta:
+En `.env` busca cada variable y ajusta su valor. Si `EXHIBITION_ASSIGNED_UNIT_IDS` no existe, agrégala. Guarda y cierra el Bloc de notas.
+
+```dotenv
+EXHIBITION_ENABLED=true
+EXHIBITION_ASSIGNED_UNIT_IDS=1
+PUBLIC_CONTROL_ENABLED=false
+```
+
+Confirma que Python cargue la configuración y reinicia la API en la misma terminal.
 
 ```powershell
+$configInvitados = & .\.venv\Scripts\python.exe -c 'from app.main import app; from app.services.exhibition_store import SESSION_SECONDS; s=app.state.runtime.settings; print(s.exhibition_enabled, s.exhibition_assigned_unit_ids, SESSION_SECONDS, s.public_control_enabled)'
+if ($LASTEXITCODE -ne 0 -or $configInvitados -ne 'True 1 900 False') { throw 'Revisa los tres valores de .env antes de reiniciar la API.' }
+$configInvitados
 Stop-ScheduledTask -TaskName 'VehiculoIoT-API'
 Start-Sleep -Seconds 3
 Start-ScheduledTask -TaskName 'VehiculoIoT-API'
-Start-Sleep -Seconds 8
-Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/rds' -TimeoutSec 15
+$saludInvitados = $null
+for ($intentoInvitados = 0; $intentoInvitados -lt 15; $intentoInvitados++) {
+    try {
+        $saludInvitados = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/rds' -TimeoutSec 3
+        if ($saludInvitados.status -eq 'ok' -and $saludInvitados.database -eq 'RDS') { break }
+    } catch { Start-Sleep -Seconds 2 }
+}
+if ($saludInvitados.status -ne 'ok' -or $saludInvitados.database -ne 'RDS') { throw 'Revisa los últimos mensajes de logs\api.log.' }
+$saludInvitados
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/plataforma/catalogo' -TimeoutSec 10 | ConvertTo-Json -Depth 5
 ```
 
-Cuando el diagnóstico muestre `status: ok` y `database: RDS`, sigue estos pasos con la ESP conectada y el carrito supervisado.
+La comprobación de Python debe mostrar `True 1 900 False`. Si necesitas permitir otras unidades asignadas, separa sus IDs con comas y reinicia la tarea.
 
-1. En **Administración → Unidades**, edita MC-001. Libera la asignación del comprador y cambia su estado a **Exhibición**. Guarda. Asegúrate de que el modelo tiene capacidades de dirección habilitadas para exhibición.
-2. En una ventana privada, entra a **Catálogo → Reservar prueba**. El control temporal dura un minuto. Una segunda ventana debe mostrar la unidad ocupada mientras la primera conserva la reserva.
-3. Finaliza la prueba y vuelve a **Administración → Unidades**. Cambia el estado a **Disponible** y reasigna MC-001 al comprador para que vuelva a estar en **Mis vehículos**.
+## Probar como invitado
+
+1. En **Administración → Unidades**, verifica que MC-001 tenga asignado el comprador. Si quedó en **Exhibición** de una prueba anterior, pásala a **Disponible** y vuelve a asignarla. Asegúrate de que el modelo tiene capacidades de dirección habilitadas para exhibición.
+2. Con la ESP conectada y el carrito supervisado, abre **Catálogo → Reservar prueba** en una ventana privada. El turno dura hasta 15 minutos. Si el comprador tiene el mando, libera el control cerrando esa pestaña o sesión antes de iniciar la reserva.
+3. Pulsa **Finalizar prueba** para devolver el mando. El comprador conserva la unidad en **Mis vehículos** durante toda la prueba.
 
 ## Reinstalación o cambio de base
 
