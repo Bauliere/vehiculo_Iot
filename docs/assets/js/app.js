@@ -13,14 +13,13 @@ import { Navigation } from './components/navigation.js';
 import { MonitorController } from './controllers/monitor-controller.js';
 import { MonitorView } from './components/monitor-view.js';
 import { ControlFeedback } from './components/control-feedback.js';
-import { bindHoldGesture } from './components/hold-gesture.js';
+import { bindHoldGesture, HOLD_ACTION_MS } from './components/hold-gesture.js';
 import { PilotFullscreen } from './components/fullscreen.js';
 import { FaustoChat } from './components/fausto-chat.js';
 import { CommercialView } from './components/commercial-view.js';
 import { Showroom } from './components/showroom.js';
 import { notice } from './components/commercial-ui.js';
 
-const DEMO_HOLD_MS = 900;
 
 /** Punto de composición: conecta clases de dominio, servicios y componentes. */
 class ControlApplication {
@@ -84,6 +83,8 @@ class ControlApplication {
       onRelease: () => void this.controller.releaseControl(),
     });
     this.joystick.setEnabled(false);
+    this.reclaimButton = this.view.get('reclaim-control');
+    bindHoldGesture(this.reclaimButton, HOLD_ACTION_MS, () => void this.reclaimControl());
     this.lever = new BoxLever(this.view.get('box-lever'), {
       onDirection: direction => {
         if (direction === 'stop') { void this.controller.releaseControl({ keepGesture: true }); return; }
@@ -219,7 +220,27 @@ class ControlApplication {
     });
   }
 
-  canSend() { return this.wsConnected && (this.mode === 'legacy' || (this.deviceConnected && this.api.channelId)); }
+  canSend() { return this.wsConnected && (this.mode === 'legacy' || (this.deviceConnected && this.api.channelId && !this.guestReservation)); }
+
+  async reclaimControl() {
+    if (this.reclaimButton.hidden || this.reclaimButton.disabled) return;
+    const socket = this.socket;
+    const id = this.vehicleId;
+    this.reclaiming = true;
+    this.reclaimError = '';
+    this.updateControls();
+    try {
+      await this.api.request(`/plataforma/unidades/${id}/recuperar-control`, { method: 'POST' });
+      if (socket === this.socket) this.guestReservation = false;
+    } catch (error) {
+      if (socket === this.socket) this.reclaimError = error.message;
+    } finally {
+      if (socket === this.socket) {
+        this.reclaiming = false;
+        this.updateControls();
+      }
+    }
+  }
 
   selectVehicle(id) {
     if (this.vehicleId === id) return;
@@ -238,6 +259,10 @@ class ControlApplication {
     this.catalogFailed = false;
     this.deviceConnected = false;
     this.wsConnected = false;
+    this.guestReservation = false;
+    this.reclaiming = false;
+    this.reclaimError = '';
+    this.reclaimButton.hidden = true;
     this.view.get('commands-dialog').close();
     this.demoSelection = 0;
     this.vehicleId = id;
@@ -282,6 +307,10 @@ class ControlApplication {
         if (event.tipo === 'canal_control') {
           this.api.channelId = typeof event.canal === 'string' ? event.canal : '';
           this.deviceConnected = event.dispositivo === true;
+          this.guestReservation = event.reserva_invitado === true;
+        } else if (event.tipo === 'reserva_invitado') {
+          this.guestReservation = event.activa === true;
+          this.reclaimError = '';
         } else if (event.tipo === 'dispositivo') {
           this.deviceConnected = event.conectado === true;
           if (!this.deviceConnected) this.connectionLost();
@@ -502,11 +531,11 @@ class ControlApplication {
       void this.controller.startDemo(this.demoSelection);
     };
     const host = this.view.get('demo-start-effect');
-    const removeFallback = bindHoldGesture(host.querySelector('button'), DEMO_HOLD_MS, confirmDemo);
+    const removeFallback = bindHoldGesture(host.querySelector('button'), HOLD_ACTION_MS, confirmDemo);
     void import('../vendor/iot-effects.js').then(({ mountDemoHold, mountVisuals, mountChatEffects }) => {
       this.fausto.setEffects(mountChatEffects(this.fausto.dialog));
       removeFallback();
-      this.view.demoButton = mountDemoHold(host, confirmDemo, DEMO_HOLD_MS);
+      this.view.demoButton = mountDemoHold(host, confirmDemo, HOLD_ACTION_MS);
       mountVisuals(document);
     }).catch(error => console.warn('No se pudieron cargar los efectos de la interfaz.', error));
   }
@@ -658,6 +687,8 @@ class ControlApplication {
     const demo = this.controller.demoId !== null;
     const uncertain = phase === 'uncertain';
     const authError = this.state.value.authError;
+    this.reclaimButton.hidden = !this.guestReservation || this.account?.cuenta.rol !== 'usuario';
+    this.reclaimButton.disabled = this.reclaiming || !this.wsConnected || !this.deviceConnected || !this.api.channelId || !this.apiAvailable;
     const enabled = this.ready && this.api.hasKey() && !authError && this.apiAvailable && this.canSend() &&
       !demo && !this.fausto.run && !uncertain && phase !== 'stopping';
     const hasDirection = ['forward', 'backward', 'left', 'right'].some(name => this.catalog.direction(name));
@@ -674,11 +705,14 @@ class ControlApplication {
           : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
             : !this.api.hasKey() ? 'Preparando acceso…'
               : this.mode === 'commercial' && !this.deviceConnected ? 'Dispositivo desconectado'
+                : this.reclaiming ? 'Recuperando el mando…'
+                : this.reclaimError ? this.reclaimError
+                : this.guestReservation ? 'En uso por un invitado'
                 : !this.ready ? 'Mandos no disponibles'
                 : this.fausto.run ? 'Fausto.IA en curso'
                   : demo ? 'DEMO en curso' : 'Listo para conducir';
     this.view.text('control-notice', notice);
-    this.view.get('control-notice').parentElement.dataset.tone = uncertain || authError ? 'error' : 'neutral';
+    this.view.get('control-notice').parentElement.dataset.tone = uncertain || authError || this.reclaimError ? 'error' : 'neutral';
   }
 }
 

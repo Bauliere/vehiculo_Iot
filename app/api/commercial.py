@@ -228,6 +228,12 @@ async def own_units(request: Request, actor: Account, limit: Limit = 25, offset:
              "soporte_hasta": as_utc(row["soporte_hasta"]) if row["soporte_hasta"] else None} for row in rows]
 
 
+@router.post("/unidades/{vehicle_id}/recuperar-control", status_code=204,
+             summary="Terminar la reserva y devolver el mando al comprador de la unidad")
+async def reclaim_control(request: Request, actor: Account, vehicle_id: Id, channel: ControlChannel = None):
+    await service(request).reclaim(actor, vehicle_id, channel)
+
+
 @router.get("/clientes", response_model=list[Customer], summary="Buscar cuentas de compradores")
 async def customers(request: Request, actor: Admin, q: Search = "", limit: Limit = 25, offset: Offset = 0):
     return await run_db(service(request).identity.customers, q, limit, offset)

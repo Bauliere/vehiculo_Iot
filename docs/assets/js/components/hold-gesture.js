@@ -1,20 +1,25 @@
 /** Respaldo para el botón HTML cuando el módulo React aún no se ha cargado. */
+export const HOLD_ACTION_MS = 900;
+
 export function bindHoldGesture(button, duration, onConfirm) {
   const events = new AbortController();
   const options = { signal: events.signal };
   let timer = 0;
   let pointer = null;
   let key = null;
+  button.style.setProperty('--hold-duration', `${duration}ms`);
 
   function cancel() {
     clearTimeout(timer);
     timer = 0;
+    button.removeAttribute('data-holding');
     const id = pointer;
     pointer = key = null;
     if (id !== null && button.hasPointerCapture(id)) button.releasePointerCapture(id);
   }
 
   function hold() {
+    button.setAttribute('data-holding', '');
     timer = setTimeout(() => {
       cancel();
       if (!button.disabled && button.getClientRects().length && document.hasFocus()) onConfirm();

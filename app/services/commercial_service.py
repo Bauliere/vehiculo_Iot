@@ -84,13 +84,17 @@ class CommercialService:
         if vehicle_id not in self.devices:
             raise ApiError(409, "El dispositivo de esta unidad está desconectado.")
 
+    def control_channel(self, actor, vehicle_id, channel_id):
+        channel = self.channels.get(channel_id)
+        if not channel or channel.actor.digest != actor.digest or channel.vehicle_id != vehicle_id or channel.expires <= utcnow():
+            raise ApiError(409, "Conecta el canal WSS de esta pestaña antes de enviar órdenes.")
+        return channel
+
     def claim(self, actor, vehicle_id, channel_id):
         self.require_connected(vehicle_id)
         if actor.role != "invitado" and vehicle_id in self.reservations:
             raise ApiError(409, "La unidad tiene una reserva de invitado activa.")
-        channel = self.channels.get(channel_id)
-        if not channel or channel.actor.digest != actor.digest or channel.vehicle_id != vehicle_id or channel.expires <= utcnow():
-            raise ApiError(409, "Conecta el canal WSS de esta pestaña antes de enviar órdenes.")
+        channel = self.control_channel(actor, vehicle_id, channel_id)
         if self.operators.get(vehicle_id, channel_id) != channel_id:
             raise ApiError(409, "Otra pestaña tiene el mando de esta unidad.")
         self.operators[vehicle_id] = channel_id
@@ -150,10 +154,26 @@ class CommercialService:
         if stopped:
             await run_db(self.exhibition.end, vehicle_id, reason, True)
             self.reservations.pop(vehicle_id, None)
+            await self.notify_reservation(vehicle_id)
         elif vehicle_id in self.reservations:
             # Invalida la ventana de operación mientras se reintenta la detención.
             self.reservations[vehicle_id] = min(self.reservations[vehicle_id], utcnow())
         return stopped
+
+    async def reclaim(self, actor, vehicle_id, channel_id):
+        self.enforce_role(actor, "usuario")
+        await self.access_unit(actor, vehicle_id)
+        self.control_channel(actor, vehicle_id, channel_id)
+        if vehicle_id in self.reservations:
+            if not await self.finish_reservation(vehicle_id, "recuperar_por_comprador"):
+                raise ApiError(503, "La detención sigue pendiente. Espera antes de recuperar el mando.")
+        self.claim(actor, vehicle_id, channel_id)
+
+    async def notify_reservation(self, vehicle_id):
+        message = event("reserva_invitado", vehicle_id, activa=vehicle_id in self.reservations)
+        for channel in tuple(self.channels.values()):
+            if channel.vehicle_id == vehicle_id and channel.actor.role != "invitado":
+                await self.manager.enviar(vehicle_id, channel.socket, message)
 
     async def reserve(self, vehicle_id):
         if not self.display_enabled:
@@ -168,6 +188,7 @@ class CommercialService:
             raise ApiError(409, "La unidad está en uso. Intenta de nuevo cuando se libere el control.")
         data = await run_db(self.exhibition.reserve, vehicle_id)
         self.reservations[vehicle_id] = data["vence"].replace(tzinfo=None)
+        await self.notify_reservation(vehicle_id)
         return data
 
     def occupied_units(self):
@@ -244,7 +265,8 @@ class CommercialService:
             if not is_guest:
                 await self.manager.enviar(vehicle_id, websocket, self.initial_event(vehicle_id, state))
             await self.manager.enviar(vehicle_id, websocket, event(
-                "canal_control", vehicle_id, canal=channel_id, dispositivo=vehicle_id in self.devices))
+                "canal_control", vehicle_id, canal=channel_id, dispositivo=vehicle_id in self.devices,
+                reserva_invitado=vehicle_id in self.reservations))
         try:
             while True:
                 await websocket.receive_text()

@@ -194,6 +194,32 @@ html:is([data-view="admin"], [data-view="showroom"]) .main-content { display: bl
 .showroom-units li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--border); }
 .showroom-units li + li { margin-top: 12px; }
 .exhibition-control { margin-bottom: 16px; }
+.control-access-status { display: grid; justify-items: end; gap: 4px; min-width: 0; }
+.commercial-hold {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 44px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.commercial-hold::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--accent) 35%, var(--surface-deep));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 140ms ease-out;
+}
+.commercial-hold[data-holding]::before { transform: scaleX(1); transition: transform var(--hold-duration) linear; }
+#reclaim-control { font-size: .78rem; }
+#reclaim-control[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .commercial-hold:not([data-holding])::before { transition: none; }
+}
 #exhibition-timer { font-variant-numeric: tabular-nums; font-size: 1.375rem; }
 
 @media (min-width: 640px) {

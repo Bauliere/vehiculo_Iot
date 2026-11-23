@@ -1,5 +1,6 @@
 import { commandLabel } from '../domain/catalog.js';
 import { action, group, icon, node, notice, paging } from './commercial-ui.js';
+import { bindHoldGesture, HOLD_ACTION_MS } from './hold-gesture.js';
 
 const PAGE_SIZE = 12;
 const LOAD_TRUCK_PHOTO = new URL('../../images/maquina-de-carga.png', import.meta.url).href;
@@ -112,9 +113,11 @@ export class Showroom {
       session.socket = this.openSocket(unit.id_vehiculo, data.token, {
         onStatus: status => {
           if (this.session !== session) return;
-          if (status !== 'connected' && session.ready) void this.finish('Se perdió la conexión. La prueba terminó.');
+          if (status !== 'connected' && session.ready) queueMicrotask(() => {
+            if (this.session === session) void this.finish('Se perdió la conexión. La prueba terminó.');
+          });
         },
-        onPolicy: () => void this.finish('La autorización de la prueba finalizó.'),
+        onPolicy: () => void this.finish('La reserva de invitado terminó.'),
         onEvent: event => {
           if (this.session !== session) return;
           if (event.tipo === 'canal_control') {
@@ -144,7 +147,7 @@ export class Showroom {
     const remaining = Math.max(0, Math.ceil((Date.parse(session.vence) - Date.now()) / 1000));
     const text = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
     if (this.clock.textContent !== text) this.clock.textContent = text;
-    if (!remaining) void this.finish('Terminó el minuto de prueba.');
+    if (!remaining) void this.finish('Se agotó el tiempo de la prueba.');
   }
 
   render() {
@@ -155,7 +158,14 @@ export class Showroom {
       button.dataset.guestCommand = stop ? 'stop' : 'move';
       return button;
     });
-    this.actions.replaceChildren(...commands, action('Finalizar prueba', () => void this.finish('Prueba finalizada.')));
+    const end = action('Terminar sesión ahora', null);
+    end.classList.add('commercial-hold');
+    end.setAttribute('data-cursor-target', '');
+    end.setAttribute('aria-describedby', 'end-guest-hint');
+    const hint = node('small', 'Mantén presionado para devolver el mando.', 'commercial-muted');
+    hint.id = 'end-guest-hint';
+    session.removeHold = bindHoldGesture(end, HOLD_ACTION_MS, () => void this.finish('Prueba finalizada.'));
+    this.actions.replaceChildren(...commands, end, hint);
     this.syncButtons();
   }
 
@@ -194,6 +204,7 @@ export class Showroom {
     this.reserving = true;
     clearInterval(session.timer);
     clearTimeout(session.cooling);
+    session.removeHold?.();
     this.activity.hidden = true;
     this.actions.replaceChildren();
     let message = reason;

@@ -216,6 +216,7 @@ class CommercialIntegration(unittest.TestCase):
         device = self.ops.identity.set_device(unit)
         reserve_path = f"/plataforma/exhibicion/{unit}/sesiones"
         movement_path = f"/vehiculos/{unit}/movimientos"
+        reclaim_path = f"/plataforma/unidades/{unit}/recuperar-control"
         self.request("POST", reserve_path, 404)
         self.ops.exhibition.assigned_unit_ids = str(unit)
 
@@ -254,5 +255,25 @@ class CommercialIntegration(unittest.TestCase):
                 self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
                 self.request("POST", reserve_path, 409)
             self.assertEqual(hardware.receive_json()["comando"], "DETENER")
+
+            reservation = self.request("POST", reserve_path, 201)
+            guest = {"Authorization": "Bearer " + reservation["token"]}
+            self.request("POST", reclaim_path, 401)
+            self.request("POST", reclaim_path, 403, headers=admin)
+            self.request("POST", reclaim_path, 409, headers=buyer)
+            with self.ws(unit, buyer) as owner, self.ws(unit, guest) as visitor:
+                owner.receive_json()
+                channel = owner.receive_json()
+                self.assertTrue(channel["reserva_invitado"])
+                visitor.receive_json()
+                self.request("POST", reclaim_path, 204, headers={**buyer, "X-IoT-Channel": channel["canal"]})
+                self.assertEqual(visitor.receive()["code"], 1008)
+                self.assertEqual(hardware.receive_json()["comando"], "DETENER")
+                self.assertEqual(owner.receive_json()["comando"], "DETENER")
+                self.assertFalse(owner.receive_json()["activa"])
+                self.request("DELETE", "/plataforma/exhibicion/sesion", 401, headers=guest)
+                self.request("POST", reserve_path, 409)
+                self.request("POST", movement_path, 200, headers={**buyer, "X-IoT-Channel": channel["canal"]}, body=movement)
+                self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
 
         self.assertEqual(self.ops.fleet.unit(unit)["id_cliente"], buyer_id)
