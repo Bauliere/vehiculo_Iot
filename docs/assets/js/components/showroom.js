@@ -5,8 +5,8 @@ const PAGE_SIZE = 12;
 const LOAD_TRUCK_PHOTO = new URL('../../images/maquina-de-carga.png', import.meta.url).href;
 
 export class Showroom {
-  constructor(document, api, { onStart, onEnd }) {
-    Object.assign(this, { document, api, onStart, onEnd });
+  constructor(document, api, { onStart, onEnding, onEnd }) {
+    Object.assign(this, { document, api, onStart, onEnding, onEnd });
     this.models = document.getElementById('showroom-models');
     this.clock = document.getElementById('exhibition-timer');
     this.message = document.getElementById('showroom-notice');
@@ -15,27 +15,39 @@ export class Showroom {
     this.loading = null;
   }
 
-  async load(done = '') {
+  async load(done = '', { quiet = false } = {}) {
+    if (quiet && (this.loading || this.session || this.reserving)) return;
     this.loading?.abort();
     const job = new AbortController();
     this.loading = job;
-    if (!done) notice(this.message, 'Consultando catálogo…');
-    this.models.setAttribute('aria-busy', 'true');
+    if (!quiet && !done) notice(this.message, 'Consultando catálogo…');
+    if (!quiet) this.models.setAttribute('aria-busy', 'true');
     try {
       const rows = await this.api.request(`/plataforma/catalogo?limit=${PAGE_SIZE}&offset=${this.offset}`, { signal: job.signal });
       if (job.signal.aborted) return;
+      const signature = JSON.stringify([this.offset, rows]);
+      if (quiet && this.signature === signature) return;
+      this.signature = signature;
       this.models.replaceChildren(...rows.map(model => this.model(model)), paging(rows, this.offset, PAGE_SIZE, offset => {
         this.offset = offset;
         void this.load().then(() => this.document.getElementById('showroom-heading').focus({ preventScroll: true }));
       }));
-      notice(this.message, done || (!rows.length ? 'Por ahora no hay modelos en el catálogo.' : ''));
+      if (!quiet || this.retryingCatalog) {
+        notice(this.message, done || (!rows.length ? 'Por ahora no hay modelos en el catálogo.' : ''));
+      }
+      this.retryingCatalog = false;
     } catch (error) {
-      if (job.signal.aborted) return;
+      if (job.signal.aborted || quiet) return;
+      this.signature = '';
+      this.retryingCatalog = true;
       this.models.replaceChildren();
       notice(this.message, error.status === 404 ? 'El catálogo aún no está habilitado en el servidor.' : error.message, true);
       this.models.append(action('Reintentar catálogo', () => void this.load()));
     } finally {
-      if (this.loading === job) this.models.removeAttribute('aria-busy');
+      if (this.loading === job) {
+        this.loading = null;
+        this.models.removeAttribute('aria-busy');
+      }
     }
   }
 
@@ -96,6 +108,7 @@ export class Showroom {
   async reserve(unit) {
     if (this.session || this.reserving || this.api.hasKey()) return;
     this.reserving = true;
+    this.loading?.abort();
     this.toggleReservations();
     notice(this.message, 'Reservando unidad…');
     try {
@@ -122,20 +135,25 @@ export class Showroom {
     if (!remaining) void this.finish('Se agotó el tiempo de la prueba.');
   }
 
-  async finish(reason = '', leaving = false) {
+  async finish(reason = '', leaving = false, { serverEnded = false } = {}) {
     const session = this.session;
-    if (!session) return;
-    this.session = null;
-    this.reserving = true;
+    if (!session || this.ending) return;
+    this.ending = true;
     clearInterval(session.timer);
-    this.onEnd(leaving);
+    this.onEnding();
     let message = reason;
     try {
-      await this.api.request('/plataforma/exhibicion/sesion', { method: 'DELETE', bearerToken: session.token, keepalive: leaving });
+      if (!serverEnded) {
+        await this.api.request('/plataforma/exhibicion/sesion', { method: 'DELETE', bearerToken: session.token, keepalive: leaving });
+      }
     } catch (error) {
       if (error.status !== 401) message = 'La detención se está comprobando en el servidor.';
     } finally {
+      this.session = null;
+      this.reserving = true;
+      this.onEnd(leaving);
       this.reserving = false;
+      this.ending = false;
       if (!leaving) {
         this.document.getElementById('showroom-heading').focus({ preventScroll: true });
         await this.load(message);

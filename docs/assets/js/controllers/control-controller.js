@@ -202,27 +202,37 @@ export class ControlController {
       try { return await this.api.move(this.vehicleId, command.id_comando); }
       catch (error) {
         if (error.status !== 409 || !(this.demoId || demoId || this.selectedDemoId)) throw error;
+        if (revision !== this.revision) throw error;
         await cancel(this.demoId || demoId || this.selectedDemoId);
+        if (revision !== this.revision) throw error;
         return await this.api.move(this.vehicleId, command.id_comando);
       }
     };
-    this.stopPromise = (async () => {
+    const stopOperation = (async () => {
       // Al soltar, una confirmación rápida permite ordenar los dos POST.
       // El botón DETENER y la pérdida de conexión interrumpen esta espera.
       const movementAcknowledged = preceding && release && !demoId
         ? await this.waitForMovement(preceding)
         : false;
+      if (revision !== this.revision) return false;
       let result;
       let failure;
       try {
         await cancel(this.demoId || demoId);
+        if (revision !== this.revision) return false;
         result = await sendStop();
       } catch (error) { failure = error; }
       // Reafirma cuando no se pudo confirmar el movimiento antes del primer STOP.
       // No se abortan escrituras fingiendo que abortar Fetch revierte una transacción.
       if (preceding && !movementAcknowledged) {
         await preceding.catch(() => {});
-        try { await cancel(this.demoId || demoId); result = await sendStop(); failure = null; }
+        if (revision !== this.revision) return false;
+        try {
+          await cancel(this.demoId || demoId);
+          if (revision !== this.revision) return false;
+          result = await sendStop();
+          failure = null;
+        }
         catch (error) { failure = error; }
       }
       if (failure) throw failure;
@@ -245,11 +255,13 @@ export class ControlController {
       }
       return false;
     }).finally(() => {
+      if (this.stopPromise !== stopOperation) return;
       this.stopPromise = null;
       this.keepGestureDuringStop = false;
       if (this.pending) void this.drain();
     });
-    return this.stopPromise;
+    this.stopPromise = stopOperation;
+    return stopOperation;
   }
 
   handleEvent(event) {
@@ -301,6 +313,24 @@ export class ControlController {
 
   connectionLost() {
     if (this.heldDirection || this.pending || this.inFlight || this.demoId || this.state.value.commandId) void this.stop();
+  }
+
+  deviceDisconnected() {
+    // La API cancela el recorrido y detiene la unidad al perder el canal físico.
+    // Descarta el gesto previo y las respuestas tardías para que nada se reanude solo.
+    this.revision += 1;
+    this.clearHeldDirection();
+    clearTimeout(this.timer);
+    this.expediteStop?.();
+    this.pending = null;
+    this.inFlight = null;
+    this.stopPromise = null;
+    this.keepGestureDuringStop = false;
+    this.intent = null;
+    this.demoId = null;
+    this.onNeutral();
+    this.state.update({ phase: 'idle', commandId: null, demoId: null, demoProgress: '', authError: null,
+      message: 'El dispositivo se desconectó.', tone: 'neutral' });
   }
 
   error(error) {

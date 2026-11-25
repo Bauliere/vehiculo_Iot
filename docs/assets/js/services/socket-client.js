@@ -113,7 +113,7 @@ export class SocketClient {
       this.onStatus('disconnected');
       if (event.code === 1008) {
         this.stop();
-        this.onPolicy();
+        this.onPolicy(event.reason);
         return;
       }
       this.schedule();

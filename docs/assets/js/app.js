@@ -113,6 +113,10 @@ class ControlApplication {
         this.navigation.showView('control');
         this.view.get('main-control').focus({ preventScroll: true });
       },
+      onEnding: () => {
+        this.controller?.deviceDisconnected();
+        this.updateControls();
+      },
       onEnd: leaving => {
         this.selectVehicle(null);
         this.units = [];
@@ -234,7 +238,10 @@ class ControlApplication {
     });
   }
 
-  canSend() { return this.wsConnected && (this.mode === 'legacy' || (this.deviceConnected && this.api.channelId && !this.guestReservation)); }
+  canSend() {
+    return !this.showroom.ending && this.wsConnected && (this.mode === 'legacy' ||
+      (this.deviceConnected && this.api.channelId && !this.guestReservation));
+  }
 
   async reclaimControl() {
     if (this.reclaimButton.hidden || this.reclaimButton.disabled) return;
@@ -335,8 +342,13 @@ class ControlApplication {
           this.reclaimError = '';
         } else if (event.tipo === 'dispositivo') {
           this.deviceConnected = event.conectado === true;
-          if (guest && !this.deviceConnected) void this.showroom.finish('El dispositivo se desconectó. La prueba terminó.');
-          if (!this.deviceConnected) this.connectionLost();
+          if (typeof event.canal === 'string') this.api.channelId = this.deviceConnected ? event.canal : '';
+          if (!this.deviceConnected) {
+            control.deviceDisconnected();
+            this.feedback.neutral();
+            this.feedback.resetAux();
+            this.fausto.disconnect();
+          }
         } else {
           control.handleEvent(event);
           if (!guest) this.monitor.handleEvent(event);
@@ -346,8 +358,12 @@ class ControlApplication {
         this.updateControls();
       },
       onError: message => { if (socket === this.socket) this.state.update({ message, tone: 'error' }); },
-      onPolicy: () => {
-        if (socket === this.socket && guest) void this.showroom.finish('La reserva de invitado terminó.');
+      onPolicy: reason => {
+        if (socket === this.socket && guest) {
+          const messages = { recuperar_por_comprador: 'El comprador recuperó el mando.',
+            fin_exhibicion: 'Se agotó el tiempo de la prueba.' };
+          void this.showroom.finish(messages[reason] ?? 'La reserva de invitado terminó.', false, { serverEnded: true });
+        }
         if (socket === this.socket && this.account) {
           this.ready = false;
           void this.fetchUnits().then(() => this.loadCatalog());
@@ -706,6 +722,9 @@ class ControlApplication {
       if (this.mode === 'legacy' && !this.api.hasKey()) void this.connectSession();
       else if (this.mode === 'offline') void this.detectMode();
     }
+    if (status.api === 'available' && this.mode === 'commercial' && this.navigation.currentView === 'showroom' && !document.hidden) {
+      void this.showroom.load('', { quiet: true });
+    }
     this.updateControls();
   }
 
@@ -726,14 +745,17 @@ class ControlApplication {
     this.joystick.setEnabled((enabled || crossingNeutral) && hasDirection);
     const boxCommands = ['SUBIR_CAJA', 'BAJAR_CAJA'].every(name => this.catalog.all().some(command => command.nombre === name));
     this.lever?.setEnabled((enabled || crossingNeutral) && boxCommands);
+    const canStop = !this.showroom.session || (this.deviceConnected && !this.showroom.ending);
     this.view.availability({ enabled, pending: phase === 'sending' || phase === 'stopping', demo,
-      hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain });
-    const notice = uncertain ? (authError ? 'Detención sin confirmar · acceso rechazado' : 'Detención sin confirmar · revisa Monitoreo')
+      hasKey: this.api.hasKey(), ready: this.ready, selectedDemo: this.demoSelection, uncertain, canStop });
+    const notice = this.showroom.ending ? 'Terminando la prueba…'
+      : uncertain ? (authError ? 'Detención sin confirmar · acceso rechazado' : 'Detención sin confirmar · revisa Monitoreo')
       : authError ? 'Sin permiso para operar' : this.sessionNotice ? this.sessionNotice
         : phase === 'stopping' ? 'Deteniendo…'
           : !this.apiAvailable || !this.wsConnected ? 'Conectando servicios…'
             : !this.api.hasKey() ? 'Preparando acceso…'
-              : this.mode === 'commercial' && !this.deviceConnected ? 'Dispositivo desconectado'
+              : this.mode === 'commercial' && !this.deviceConnected
+                ? (this.showroom.session ? 'Reconectando el vehículo. Tu reserva sigue activa.' : 'Dispositivo desconectado')
                 : this.reclaiming ? 'Recuperando el mando…'
                 : this.reclaimError ? this.reclaimError
                 : this.guestReservation ? 'En uso por un invitado'

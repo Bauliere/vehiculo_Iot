@@ -3,6 +3,7 @@
 import os
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 from secrets import token_hex
 
@@ -279,6 +280,61 @@ class CommercialIntegration(unittest.TestCase):
                 self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
 
         self.assertEqual(self.ops.fleet.unit(unit)["id_cliente"], buyer_id)
+
+    def test_guest_keeps_reservation_after_device_disconnect_without_replaying_movement(self):
+        admin = self.login(self.email)
+        model = self.model(admin)
+        unit = self.unit(admin, model, "Unidad con reconexión", "exhibicion")
+        device = self.ops.identity.set_device(unit)
+        path = f"/vehiculos/{unit}"
+        reserve = f"/plataforma/exhibicion/{unit}/sesiones"
+        hardware_socket = lambda: self.client.websocket_connect(f"/ws{path}", headers={"X-Device-Key": device})
+
+        with ExitStack() as device_connection:
+            hardware = device_connection.enter_context(hardware_socket())
+            hardware.receive_json()
+            session = self.request("POST", reserve, 201)
+            guest = {"Authorization": "Bearer " + session["token"]}
+            advance = next(row["id_comando"] for row in session["comandos"] if row["nombre"] == "AVANZAR")
+            movement = {"id_comando": advance, "origen": "API"}
+            with self.ws(unit, guest) as visitor:
+                first_channel = visitor.receive_json()["canal"]
+                old_headers = {**guest, "X-IoT-Channel": first_channel}
+                self.request("POST", f"{path}/movimientos", 200, headers=old_headers, body=movement)
+                self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
+                self.assertEqual(visitor.receive_json()["comando"], "AVANZAR")
+
+                device_connection.close()
+                disconnected = visitor.receive_json()
+                self.assertEqual(disconnected["tipo"], "dispositivo")
+                self.assertFalse(disconnected["conectado"])
+                self.assertEqual(visitor.receive_json()["comando"], "DETENER")
+                self.request("GET", path, 200, headers=guest)
+                self.request("POST", reserve, 409)
+                new_headers = {**guest, "X-IoT-Channel": disconnected["canal"]}
+                self.request("POST", f"{path}/movimientos", 409, headers=new_headers, body=movement)
+
+                with hardware_socket() as reconnected:
+                    initial = reconnected.receive_json()
+                    self.assertEqual((initial["tipo"], initial["comando"]), ("estado_inicial", "DETENER"))
+                    connected = visitor.receive_json()
+                    self.assertTrue(connected["conectado"])
+                    self.assertEqual(connected["canal"], disconnected["canal"])
+                    self.assertNotEqual(first_channel, connected["canal"])
+                    self.request("POST", f"{path}/movimientos", 409, headers=old_headers, body=movement)
+                    self.request("POST", f"{path}/movimientos", 200, headers=new_headers, body=movement)
+                    self.assertEqual(reconnected.receive_json()["comando"], "AVANZAR")
+                    self.assertEqual(visitor.receive_json()["comando"], "AVANZAR")
+
+                self.assertFalse(visitor.receive_json()["conectado"])
+                self.assertEqual(visitor.receive_json()["comando"], "DETENER")
+                self.request("DELETE", "/plataforma/exhibicion/sesion", 204, headers=guest)
+                self.assertEqual(visitor.receive()["reason"], "cierre_exhibicion")
+            self.request("GET", path, 401, headers=guest)
+
+        with hardware_socket() as reconnected:
+            self.assertEqual(reconnected.receive_json()["comando"], "DETENER")
+            self.request("POST", reserve, 201)
 
     def test_guest_uses_the_main_control_api_with_public_demos_only(self):
         admin = self.login(self.email)

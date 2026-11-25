@@ -104,16 +104,16 @@ export class ControlView {
       button.setAttribute('aria-busy', String(active && state.phase === 'sending'));
     }
   }
-  availability({ enabled, pending, demo, hasKey, ready, selectedDemo, uncertain }) {
+  availability({ enabled, pending, demo, hasKey, ready, selectedDemo, uncertain, canStop = true }) {
     for (const button of this.get('extra-controls').querySelectorAll('button')) button.disabled = !enabled || button.dataset.placeholder === 'true';
     for (const button of this.get('additional-controls').children) button.disabled = !enabled;
     const demoDisabled = !enabled || pending || !selectedDemo;
     if (this.demoButton) this.demoButton.setDisabled(demoDisabled);
     else this.get('demo-start').disabled = demoDisabled;
-    this.get('demo-cancel').disabled = !hasKey || (!demo && !uncertain);
+    this.get('demo-cancel').disabled = !hasKey || !canStop || (!demo && !uncertain);
     this.get('demo-select').disabled = !ready || demo || pending;
-    // DETENER sigue disponible durante solicitudes, DEMO y fallos de conectividad.
-    this.get('stop-button').disabled = !hasKey || !ready;
-    this.get('commands-stop').disabled = !hasKey || !ready;
+    // DETENER conserva prioridad mientras el canal admite órdenes.
+    this.get('stop-button').disabled = !hasKey || !ready || !canStop;
+    this.get('commands-stop').disabled = !hasKey || !ready || !canStop;
   }
 }

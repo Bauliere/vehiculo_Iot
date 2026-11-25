@@ -58,9 +58,9 @@ class WebSocketManager:
             connection.task.cancel()
 
     @staticmethod
-    async def close_socket(websocket, code):
+    async def close_socket(websocket, code, *, reason=""):
         try:
-            await asyncio.wait_for(websocket.close(code=code), timeout=1)
+            await asyncio.wait_for(websocket.close(code=code, reason=reason), timeout=1)
         except Exception:
             pass
 
@@ -93,9 +93,9 @@ class WebSocketManager:
             self.desconectar(id_vehiculo, websocket)
             self._track(self.close_socket(websocket, 1013))
 
-    def cerrar(self, id_vehiculo, websocket, code):
+    def cerrar(self, id_vehiculo, websocket, code, *, reason=""):
         self.desconectar(id_vehiculo, websocket)
-        self._track(self.close_socket(websocket, code))
+        self._track(self.close_socket(websocket, code, reason=reason))
 
     async def enviar(self, id_vehiculo, websocket, mensaje):
         self._enqueue(id_vehiculo, websocket, jsonable_encoder(mensaje))

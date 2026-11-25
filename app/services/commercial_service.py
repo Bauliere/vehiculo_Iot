@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Channel:
+    id: str
     actor: Actor
     vehicle_id: int
     socket: object
@@ -134,7 +135,10 @@ class CommercialService:
             if vehicle_id in self.runtime.demos.runs:
                 await self.stop(vehicle_id)
             result = await self.runtime.control.move(vehicle_id, command_id, origin)
+            was_pending = vehicle_id in self.pending_stops
             self.pending_stops.discard(vehicle_id)
+            if was_pending and vehicle_id in self.devices:
+                await self.notify_device(vehicle_id, True)
             return result
         channel = self.claim(actor, vehicle_id, channel_id)
         if time.monotonic() - channel.last_command < min_interval:
@@ -149,15 +153,15 @@ class CommercialService:
         return self.runtime.demos.start(vehicle_id, demo_id, prepare=prepare)
 
     async def finish_reservation(self, vehicle_id, reason):
-        self.retire(lambda channel: channel.vehicle_id == vehicle_id and channel.actor.role == "invitado")
+        if vehicle_id in self.reservations:
+            # Impide abrir otro canal mientras se detiene el vehículo y se cierra la reserva en RDS.
+            self.reservations[vehicle_id] = min(self.reservations[vehicle_id], utcnow())
+        self.retire(lambda channel: channel.vehicle_id == vehicle_id and channel.actor.role == "invitado", reason)
         stopped = await self.quiesce(vehicle_id)
         if stopped:
             await run_db(self.exhibition.end, vehicle_id, reason, True)
             self.reservations.pop(vehicle_id, None)
             await self.notify_reservation(vehicle_id)
-        elif vehicle_id in self.reservations:
-            # Invalida la ventana de operación mientras se reintenta la detención.
-            self.reservations[vehicle_id] = min(self.reservations[vehicle_id], utcnow())
         return stopped
 
     async def reclaim(self, actor, vehicle_id, channel_id):
@@ -208,11 +212,11 @@ class CommercialService:
     def manager(self):
         return self.runtime.websocket_manager
 
-    def retire(self, predicate):
+    def retire(self, predicate, reason=""):
         for key, channel in tuple(self.channels.items()):
             if predicate(channel):
                 self.channels.pop(key)
-                self.manager.cerrar(channel.vehicle_id, channel.socket, 1008)
+                self.manager.cerrar(channel.vehicle_id, channel.socket, 1008, reason=reason)
 
     async def revoke(self, predicate):
         affected = {channel.vehicle_id for key, channel in self.channels.items()
@@ -261,25 +265,28 @@ class CommercialService:
                 state = await run_db(self.runtime.catalog.state, vehicle_id)
             channel_id = secrets.token_urlsafe(18)
             await self.manager.conectar(vehicle_id, websocket, subprotocol="iot.v1")
-            self.channels[channel_id] = Channel(actor, vehicle_id, websocket, expires)
+            channel = Channel(channel_id, actor, vehicle_id, websocket, expires)
+            self.channels[channel_id] = channel
             if not is_guest:
                 await self.manager.enviar(vehicle_id, websocket, self.initial_event(vehicle_id, state))
             await self.manager.enviar(vehicle_id, websocket, event(
-                "canal_control", vehicle_id, canal=channel_id, dispositivo=vehicle_id in self.devices,
+                "canal_control", vehicle_id, canal=channel_id,
+                dispositivo=vehicle_id in self.devices and vehicle_id not in self.pending_stops,
                 reserva_invitado=vehicle_id in self.reservations))
         try:
             while True:
                 await websocket.receive_text()
         finally:
-            await self.keep_cleanup(self.browser_disconnected(channel_id, vehicle_id, websocket, is_guest))
+            await self.keep_cleanup(self.browser_disconnected(channel))
 
-    async def browser_disconnected(self, channel_id, vehicle_id, websocket, is_guest):
+    async def browser_disconnected(self, channel):
         async with self.gate:
-            if self.channels.pop(channel_id, None):
-                self.manager.desconectar(vehicle_id, websocket)
-                if is_guest:
+            if self.channels.pop(channel.id, None):
+                vehicle_id = channel.vehicle_id
+                self.manager.desconectar(vehicle_id, channel.socket)
+                if channel.actor.role == "invitado":
                     await self.finish_reservation(vehicle_id, "desconexion_exhibicion")
-                elif self.operators.get(vehicle_id) == channel_id:
+                elif self.operators.get(vehicle_id) == channel.id:
                     await self.quiesce(vehicle_id)
 
     @staticmethod
@@ -297,7 +304,8 @@ class CommercialService:
             await self.manager.conectar(vehicle_id, websocket)
             self.devices[vehicle_id] = websocket
             await self.manager.enviar(vehicle_id, websocket, self.initial_event(vehicle_id, state))
-            await self.notify_device(vehicle_id, True)
+            if vehicle_id not in self.pending_stops or await self.quiesce(vehicle_id):
+                await self.notify_device(vehicle_id, True)
         try:
             while True:
                 await websocket.receive_text()
@@ -308,10 +316,15 @@ class CommercialService:
         async with self.gate:
             self.manager.desconectar(vehicle_id, websocket)
             self.devices.pop(vehicle_id, None)
+            # Un POST enviado antes de la caída puede llegar después de la reconexión.
+            # Renueva los canales sin cerrar la pestaña ni cancelar la reserva.
+            for channel in tuple(self.channels.values()):
+                if channel.vehicle_id == vehicle_id:
+                    self.channels.pop(channel.id)
+                    channel.id = secrets.token_urlsafe(18)
+                    self.channels[channel.id] = channel
             await self.notify_device(vehicle_id, False)
-            if vehicle_id in self.reservations:
-                await self.finish_reservation(vehicle_id, "dispositivo_desconectado")
-            elif vehicle_id in self.operators or vehicle_id in self.runtime.demos.runs:
+            if vehicle_id in self.reservations or vehicle_id in self.operators or vehicle_id in self.runtime.demos.runs:
                 await self.quiesce(vehicle_id)
 
     async def keep_cleanup(self, coroutine):
@@ -327,10 +340,11 @@ class CommercialService:
             logger.warning("Cierre de canal pendiente (%s).", type(task.exception()).__name__)
 
     async def notify_device(self, vehicle_id, connected):
-        message = event("dispositivo", vehicle_id, conectado=connected)
         for channel in tuple(self.channels.values()):
             if channel.vehicle_id == vehicle_id:
-                await self.manager.enviar(vehicle_id, channel.socket, message)
+                await self.manager.enviar(vehicle_id, channel.socket, event(
+                    "dispositivo", vehicle_id, conectado=connected, canal=channel.id,
+                ))
 
     async def socket(self, websocket, vehicle_id):
         try:
@@ -358,8 +372,10 @@ class CommercialService:
                     for vehicle_id, expires in tuple(self.reservations.items()):
                         if expires <= now:
                             await self.finish_reservation(vehicle_id, "fin_exhibicion")
-                    for vehicle_id in self.pending_stops.difference(self.reservations):
-                        await self.quiesce(vehicle_id)
+                    for vehicle_id in self.pending_stops.copy():
+                        if self.reservations.get(vehicle_id, datetime.max) > now:
+                            if await self.quiesce(vehicle_id) and vehicle_id in self.devices:
+                                await self.notify_device(vehicle_id, True)
             except ApiError as error:
                 logger.warning("Supervisión comercial aplazada (HTTP %s).", error.status_code)
             await asyncio.sleep(1)
