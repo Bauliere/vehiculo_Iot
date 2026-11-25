@@ -56,7 +56,7 @@
 <section id="control-view" class="workspace" aria-label="Control del vehículo" inert>
 <div class="pilot-workspace">
 <section class="drive-panel glass-panel" aria-labelledby="vehicle-name">
-<div class="control-topline"><div class="control-identity"><h1 class="rb-warp-shell"><span id="vehicle-name" data-warp-title>Control del vehículo</span><span class="rb-warp" aria-hidden="true"></span></h1><p id="vehicle-id" class="vehicle-reference">Sin unidad seleccionada</p></div><div class="control-access-status"><p class="control-notice" role="status"><i class="status-dot" aria-hidden="true"></i><span id="control-notice">Comprobando acceso…</span></p><button id="reclaim-control" class="btn btn-outline-soft commercial-hold" type="button" data-cursor-target aria-describedby="reclaim-help" hidden>Recuperar mando</button><span id="reclaim-help" class="visually-hidden">Mantén presionado para terminar la reserva de invitado.</span></div></div>
+<div class="control-topline"><div class="control-identity"><h1 class="rb-warp-shell"><span id="vehicle-name" data-warp-title>Control del vehículo</span><span class="rb-warp" aria-hidden="true"></span></h1><p id="vehicle-id" class="vehicle-reference">Sin unidad seleccionada</p></div><div class="control-access-status"><p class="control-notice" role="status"><i class="status-dot" aria-hidden="true"></i><span id="control-notice">Comprobando acceso…</span></p><button id="reclaim-control" class="btn btn-outline-soft commercial-hold" type="button" data-cursor-target aria-describedby="reclaim-help" hidden>Recuperar mando</button><span id="reclaim-help" class="visually-hidden">Mantén presionado para terminar la reserva de invitado.</span><div id="exhibition-session" class="guest-session" hidden><time id="exhibition-timer" aria-label="Tiempo restante"></time><button id="end-guest-session" class="btn btn-outline-soft commercial-hold" type="button" data-cursor-target aria-describedby="end-guest-hint">Terminar sesión ahora</button><span id="end-guest-hint" class="visually-hidden">Mantén presionado para devolver el mando.</span></div></div></div>
 <div class="mechanics">
 <div class="drive-module"><div class="module-heading"><h2>Dirección</h2><span class="module-rule"></span></div>
 <div class="joystick-wrap"><span class="direction-label direction-top">AVANZAR</span><span class="direction-label direction-left">IZQ.</span><span class="direction-label direction-right">DER.</span><span class="direction-label direction-bottom">RETROCEDER</span>
@@ -100,11 +100,6 @@
 </section>
 <section id="showroom-view" class="commercial-view" aria-labelledby="showroom-heading" hidden>
   <header class="commercial-heading"><div><h1 id="showroom-heading" tabindex="-1">Prueba nuestros vehículos IoT</h1><p>Elige una unidad disponible y pruébala hasta por 15 minutos sin registrarte.</p></div></header>
-  <section class="glass-panel commercial-panel exhibition-control" id="exhibition-session" data-tilt-card aria-labelledby="exhibition-title" hidden>
-    <span class="monitor-foil" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-    <div class="commercial-panel-heading"><h2 id="exhibition-title" tabindex="-1">Prueba en curso</h2><time id="exhibition-timer" aria-label="Tiempo restante"></time></div>
-    <div id="exhibition-actions" class="commercial-actions"></div>
-  </section>
   <p id="showroom-notice" class="commercial-notice" role="status" hidden></p>
   <div id="showroom-models" class="showroom-models"></div>
 </section>

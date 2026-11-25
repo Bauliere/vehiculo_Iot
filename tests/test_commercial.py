@@ -190,6 +190,7 @@ class CommercialIntegration(unittest.TestCase):
                 self.request("POST", "/plataforma/exhibicion/ordenes", 403, headers=credentials, body={"id_comando": 2147483647})
                 self.request("POST", "/plataforma/exhibicion/ordenes", 200, headers=credentials, body={"id_comando": advance})
                 self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
+                self.assertEqual(visitor.receive_json()["comando"], "AVANZAR")
                 self.request("POST", "/plataforma/exhibicion/ordenes", 429, headers=credentials, body={"id_comando": advance})
             self.assertEqual(hardware.receive_json()["comando"], "DETENER")
             self.request("POST", "/plataforma/exhibicion/ordenes", 401, headers=headers, body={"id_comando": advance})
@@ -247,6 +248,7 @@ class CommercialIntegration(unittest.TestCase):
                     self.request("POST", "/plataforma/exhibicion/ordenes", 200, headers=guest_channel,
                                  body={"id_comando": advance})
                     self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
+                    self.assertEqual(visitor.receive_json()["comando"], "AVANZAR")
                     self.request("DELETE", "/plataforma/exhibicion/sesion", 204, headers=guest)
                     self.assertEqual(visitor.receive()["code"], 1008)
                 self.assertEqual(hardware.receive_json()["comando"], "DETENER")
@@ -277,3 +279,43 @@ class CommercialIntegration(unittest.TestCase):
                 self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
 
         self.assertEqual(self.ops.fleet.unit(unit)["id_cliente"], buyer_id)
+
+    def test_guest_uses_the_main_control_api_with_public_demos_only(self):
+        admin = self.login(self.email)
+        model = self.model(admin)
+        unit = self.unit(admin, model, "Unidad de demostración", "disponible")
+        buyer_id, buyer = self.buyer(admin, "Comprador")
+        editor = f"/plataforma/unidades/{unit}/editor"
+        self.request("PUT", f"/plataforma/unidades/{unit}/asignacion", 200, headers=admin, body={"id_cliente": buyer_id})
+        self.ops.exhibition.assigned_unit_ids = str(unit)
+        commands = self.request("GET", editor, 200, headers=admin)["comandos"]
+        light = next(row["id_comando"] for row in commands if row["nombre"] == "ALTERNAR_LUCES")
+        body = {"nombre": "Recorrido", "pasos": [{"id_comando": light, "duracion_ms": 400}]}
+        public = self.request("POST", editor, 201, headers=admin, body=body)["id_demo"]
+        private = self.request("POST", editor, 201, headers=buyer, body=body)["id_demo"]
+        self.request("POST", editor, 201, headers=admin, body={**body, "activo": False})
+        device = self.ops.identity.set_device(unit)
+        path = f"/vehiculos/{unit}"
+        with self.client.websocket_connect(f"/ws/vehiculos/{unit}", headers={"X-Device-Key": device}) as hardware:
+            hardware.receive_json()
+            reservation = self.request("POST", f"/plataforma/exhibicion/{unit}/sesiones", 201)
+            guest = {"Authorization": "Bearer " + reservation["token"]}
+            detail = self.request("GET", path, 200, headers=guest)
+            self.assertEqual([row["id_demo"] for row in detail["demos"]], [public])
+            self.request("GET", f"{path}/demos/{private}/movimientos", 404, headers=guest)
+            self.request("GET", f"/vehiculos/{unit + 1}", 403, headers=guest)
+            self.request("POST", editor, 401, headers=guest, body=body)
+            self.request("GET", f"{path}/demos/{public}/movimientos", 200, headers=guest)
+            with self.ws(unit, guest) as visitor:
+                channel = {**guest, "X-IoT-Channel": visitor.receive_json()["canal"]}
+                self.request("POST", f"{path}/movimientos", 200, headers=channel, body={"id_comando": light, "origen": "API"})
+                self.assertEqual(visitor.receive_json()["comando"], "ALTERNAR_LUCES")
+                self.assertEqual(hardware.receive_json()["comando"], "ALTERNAR_LUCES")
+                self.request("POST", f"{path}/demos/{public}/iniciar", 202, headers=channel)
+                self.assertEqual(visitor.receive_json()["tipo"], "demo_inicio")
+                self.assertEqual(visitor.receive_json()["tipo"], "demo_movimiento")
+                self.assertEqual(visitor.receive_json()["tipo"], "demo_fin")
+                for kind in ("demo_inicio", "demo_movimiento", "demo_fin"):
+                    self.assertEqual(hardware.receive_json()["tipo"], kind)
+            self.assertEqual(hardware.receive_json()["comando"], "DETENER")
+            self.request("GET", path, 401, headers=guest)

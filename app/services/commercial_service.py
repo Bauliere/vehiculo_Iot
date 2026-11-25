@@ -125,7 +125,7 @@ class CommercialService:
             logger.warning("Detención pendiente para la unidad %s.", vehicle_id)
             return False
 
-    async def move(self, actor, vehicle_id, channel_id, command_id, origin):
+    async def move(self, actor, vehicle_id, channel_id, command_id, origin, *, min_interval=0.05):
         commands = await run_db(self.runtime.catalog.commands, vehicle_id)
         command = next((row for row in commands if row["id_comando"] == command_id and row["activo"]), None)
         if not command:
@@ -137,7 +137,7 @@ class CommercialService:
             self.pending_stops.discard(vehicle_id)
             return result
         channel = self.claim(actor, vehicle_id, channel_id)
-        if time.monotonic() - channel.last_command < (1.25 if actor.role == "invitado" else 0.05):
+        if time.monotonic() - channel.last_command < min_interval:
             raise ApiError(429, "Espera antes de enviar otra orden.")
         channel.last_command = time.monotonic()
         return await self.runtime.control.move(vehicle_id, command_id, origin)
@@ -260,7 +260,7 @@ class CommercialService:
                            if actor.role == "administrador" else actor.expires)
                 state = await run_db(self.runtime.catalog.state, vehicle_id)
             channel_id = secrets.token_urlsafe(18)
-            await self.manager.conectar(vehicle_id, websocket, subprotocol="iot.v1", receive_events=not is_guest)
+            await self.manager.conectar(vehicle_id, websocket, subprotocol="iot.v1")
             self.channels[channel_id] = Channel(actor, vehicle_id, websocket, expires)
             if not is_guest:
                 await self.manager.enviar(vehicle_id, websocket, self.initial_event(vehicle_id, state))

@@ -21,17 +21,17 @@ Si la consulta local funciona, comprueba la IP pública de la instancia y la tar
 
 ## Actualizar EC2 para exhibir MC-001 con comprador asignado
 
-Copia `Actualizacion-Control-Invitados-EC2.zip` al Escritorio remoto, dentro de `C:\Users\Administrator\Desktop\websocket_iot`. El paquete incluye las reservas de 15 minutos y la recuperación del mando. En PowerShell del escritorio remoto:
+Copia `Actualizacion-Invitado-Control-Completo-EC2.zip` al Escritorio remoto, dentro de `C:\Users\Administrator\Desktop\websocket_iot`. El paquete incluye la pantalla principal de control para invitados, las reservas de 15 minutos y la recuperación del mando. En PowerShell del escritorio remoto:
 
 ```powershell
 Set-Location 'C:\Users\Administrator\Desktop\websocket_iot'
 $ErrorActionPreference = 'Stop'
-$paqueteInvitados = Get-Item -LiteralPath '.\Actualizacion-Control-Invitados-EC2.zip'
+$paqueteInvitados = Get-Item -LiteralPath '.\Actualizacion-Invitado-Control-Completo-EC2.zip'
 $marcaInvitados = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $respaldoInvitados = New-Item -ItemType Directory -Path ".\respaldo-invitados-$marcaInvitados"
 $temporalInvitados = Join-Path $env:TEMP "vehiculo-invitados-$marcaInvitados"
 Expand-Archive -LiteralPath $paqueteInvitados.FullName -DestinationPath $temporalInvitados
-$archivosInvitados = 'app\config.py','app\api\commercial.py','app\services\commercial_service.py','app\services\exhibition_store.py'
+$archivosInvitados = 'app\config.py','app\api\commercial.py','app\services\commercial_service.py','app\services\commercial_store.py','app\services\exhibition_store.py'
 foreach ($rutaInvitados in $archivosInvitados) {
     $origenInvitados = Join-Path $temporalInvitados $rutaInvitados
     Get-Item -LiteralPath $origenInvitados | Out-Null
@@ -57,7 +57,7 @@ PUBLIC_CONTROL_ENABLED=false
 Confirma que Python cargue la configuración y reinicia la API en la misma terminal.
 
 ```powershell
-$configInvitados = & .\.venv\Scripts\python.exe -c 'from app.main import app; from app.services.exhibition_store import SESSION_SECONDS; s=app.state.runtime.settings; print(s.exhibition_enabled, s.exhibition_assigned_unit_ids, SESSION_SECONDS, s.public_control_enabled, ''/plataforma/unidades/{vehicle_id}/recuperar-control'' in app.openapi()[''paths''])'
+$configInvitados = & .\.venv\Scripts\python.exe -c 'from app.main import app; from app.api.commercial import GUEST_CONTROL_ROUTES; from app.services.exhibition_store import SESSION_SECONDS; s=app.state.runtime.settings; print(s.exhibition_enabled, s.exhibition_assigned_unit_ids, SESSION_SECONDS, s.public_control_enabled, (''POST'', ''/vehiculos/{id_vehiculo}/demos/{id_demo}/iniciar'') in GUEST_CONTROL_ROUTES)'
 if ($LASTEXITCODE -ne 0 -or $configInvitados -ne 'True 1 900 False True') { throw 'Revisa .env y la ruta de recuperación antes de reiniciar la API.' }
 $configInvitados
 Stop-ScheduledTask -TaskName 'VehiculoIoT-API'
@@ -84,7 +84,7 @@ La comprobación de Python debe mostrar `True 1 900 False True`. Si necesitas pe
 ## Probar como invitado
 
 1. En **Administración → Unidades**, verifica que MC-001 tenga asignado el comprador. Si quedó en **Exhibición** de una prueba anterior, pásala a **Disponible** y vuelve a asignarla. Asegúrate de que el modelo tiene capacidades de dirección habilitadas para exhibición.
-2. Con la ESP conectada y el carrito supervisado, abre **Catálogo → Reservar prueba** en una ventana privada. El turno dura hasta 15 minutos. Si el comprador tiene el mando, libera el control cerrando esa pestaña o sesión antes de iniciar la reserva.
+2. Con la ESP conectada y el carrito supervisado, abre **Catálogo → Reservar prueba** en una ventana privada. La página abre **Control** con los mandos de la unidad y las demos públicas activas en **Recorridos**. El turno dura hasta 15 minutos. Si el comprador tiene el mando, libera el control cerrando esa pestaña o sesión antes de iniciar la reserva.
 3. Como invitado, mantén presionado **Terminar sesión ahora** hasta que se complete la barra. Como comprador, abre **Mis vehículos → Controlar** y mantén presionado **Recuperar mando**. Esta segunda opción cierra la sesión del invitado y entrega el mando a esa pestaña del comprador.
 
 ## Reinstalación o cambio de base

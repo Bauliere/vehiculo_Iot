@@ -326,6 +326,8 @@ class FleetStore:
 
     @staticmethod
     def visible_demos(rows, actor):
+        if actor.role == "invitado":
+            return [row for row in rows if row.get("id_cliente_demo") is None and row["activo"]]
         return [row for row in rows if row.get("id_cliente_demo") is None or (
             actor.role == "usuario" and row["id_cliente_demo"] == actor.account_id)]
 

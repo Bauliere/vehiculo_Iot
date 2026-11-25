@@ -37,8 +37,8 @@ class ControlApplication {
     this.monitorView = new MonitorView(document);
     this.historyResize = new ResizeObserver(() => this.resizeMonitor());
     this.navigation = new Navigation(document, {
-      beforeView: (_name, previous) => {
-        if (previous !== 'showroom' || (!this.showroom.session && !this.showroom.reserving)) return true;
+      beforeView: (name, previous) => {
+        if (previous !== 'showroom' || !this.showroom.reserving || (name === 'control' && this.showroom.session)) return true;
         notice(this.view.get('showroom-notice'), 'Finaliza la prueba antes de cambiar de vista.');
         return false;
       },
@@ -47,7 +47,7 @@ class ControlApplication {
         if (name === 'monitor' && this.vehicleId) void this.monitor.enter();
         if (name === 'admin') void this.commercial.open();
         else this.commercial.cancel();
-        if (name === 'showroom' && this.mode === 'commercial') void this.showroom.load();
+        if (name === 'showroom' && this.mode === 'commercial' && !this.showroom.reserving) void this.showroom.load();
         this.syncUnits();
       },
       onPanel: () => {
@@ -105,13 +105,23 @@ class ControlApplication {
       onDemosChange: id => { if (id === this.vehicleId) void this.loadCatalog(); },
       onExpired: () => this.endAccount('La sesión terminó. Vuelve a iniciar sesión.'),
     });
-    this.showroom = new Showroom(document, this.api, (id, token, options) => {
-      const socket = this.makeSocket(id, token, {
-        ...options, onStatus: status => { this.showSocketStatus(status); options.onStatus(status); },
-      });
-      socket.start();
-      return socket;
+    this.showroom = new Showroom(document, this.api, {
+      onStart: (unit, session) => {
+        this.api.setAccount(session.token);
+        this.units = [unit];
+        this.selectVehicle(unit.id_vehiculo);
+        this.navigation.showView('control');
+        this.view.get('main-control').focus({ preventScroll: true });
+      },
+      onEnd: leaving => {
+        this.selectVehicle(null);
+        this.units = [];
+        this.api.setAccount();
+        this.syncUnits();
+        if (!leaving) this.navigation.showView('showroom');
+      },
     });
+    bindHoldGesture(this.view.get('end-guest-session'), HOLD_ACTION_MS, () => void this.showroom.finish('Prueba finalizada.'));
     this.health = new HealthService(this.api, {
       intervalMs: CONFIG.healthIntervalMs,
       onChange: status => this.healthStatus(status),
@@ -164,7 +174,11 @@ class ControlApplication {
       this.feedback?.stop();
     });
     window.addEventListener('pageshow', event => {
-      if (event.persisted) { this.socket?.start(); this.health.start(); void this.monitor?.start(); }
+      if (event.persisted) {
+        this.socket?.start();
+        this.health.start();
+        if (!this.showroom.session) void this.monitor?.start();
+      }
     });
     this.health.start();
     void this.detectMode();
@@ -300,23 +314,32 @@ class ControlApplication {
     });
     this.controller = control;
     this.unsubscribe = this.state.subscribe(value => { this.view.render(value); this.updateControls(); });
-    const socket = this.makeSocket(id, this.account?.token, {
-      onStatus: status => { if (socket === this.socket) this.socketStatus(status); },
+    const guest = this.showroom.session;
+    const socket = this.makeSocket(id, guest?.token ?? this.account?.token, {
+      onStatus: status => {
+        if (socket !== this.socket) return;
+        this.socketStatus(status);
+        if (guest && status === 'disconnected' && guest.ready) queueMicrotask(() => {
+          if (this.showroom.session === guest) void this.showroom.finish('Se perdió la conexión. La prueba terminó.');
+        });
+      },
       onEvent: event => {
         if (socket !== this.socket || event.id_vehiculo !== id) return;
         if (event.tipo === 'canal_control') {
           this.api.channelId = typeof event.canal === 'string' ? event.canal : '';
           this.deviceConnected = event.dispositivo === true;
-          this.guestReservation = event.reserva_invitado === true;
+          this.guestReservation = !guest && event.reserva_invitado === true;
+          if (guest) guest.ready = true;
         } else if (event.tipo === 'reserva_invitado') {
           this.guestReservation = event.activa === true;
           this.reclaimError = '';
         } else if (event.tipo === 'dispositivo') {
           this.deviceConnected = event.conectado === true;
+          if (guest && !this.deviceConnected) void this.showroom.finish('El dispositivo se desconectó. La prueba terminó.');
           if (!this.deviceConnected) this.connectionLost();
         } else {
           control.handleEvent(event);
-          this.monitor.handleEvent(event);
+          if (!guest) this.monitor.handleEvent(event);
           this.feedback.handleEvent(event);
           this.fausto.handleEvent(event);
         }
@@ -324,6 +347,7 @@ class ControlApplication {
       },
       onError: message => { if (socket === this.socket) this.state.update({ message, tone: 'error' }); },
       onPolicy: () => {
+        if (socket === this.socket && guest) void this.showroom.finish('La reserva de invitado terminó.');
         if (socket === this.socket && this.account) {
           this.ready = false;
           void this.fetchUnits().then(() => this.loadCatalog());
@@ -334,7 +358,7 @@ class ControlApplication {
     this.monitor.publish({ socket: 'connecting' });
     socket.start();
     void this.loadCatalog();
-    void this.monitor.start();
+    if (!guest) void this.monitor.start();
     this.syncUnits();
   }
 
@@ -345,8 +369,13 @@ class ControlApplication {
   }
 
   syncUnits() {
+    const guest = Boolean(this.showroom.session);
     const pilot = this.mode === 'legacy' || (this.mode === 'commercial' && this.units.length > 0);
     this.navButton('admin').hidden = !this.account;
+    this.navButton('monitor').hidden = guest;
+    this.navButton('showroom').hidden = this.mode === 'legacy' || guest || this.mode === 'pending';
+    this.view.get('account-button').hidden = this.mode !== 'commercial' || guest;
+    this.view.get('exhibition-session').hidden = !guest;
     this.view.get('fullscreen-button').hidden = !pilot;
     this.view.text('admin-nav-label', this.account?.cuenta.rol === 'usuario' ? 'Mis vehículos' : 'Administración');
     const switcher = this.view.get('unit-switcher');

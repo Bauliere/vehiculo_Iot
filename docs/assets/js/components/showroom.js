@@ -1,16 +1,13 @@
 import { commandLabel } from '../domain/catalog.js';
 import { action, group, icon, node, notice, paging } from './commercial-ui.js';
-import { bindHoldGesture, HOLD_ACTION_MS } from './hold-gesture.js';
 
 const PAGE_SIZE = 12;
 const LOAD_TRUCK_PHOTO = new URL('../../images/maquina-de-carga.png', import.meta.url).href;
 
 export class Showroom {
-  constructor(document, api, openSocket) {
-    Object.assign(this, { document, api, openSocket });
+  constructor(document, api, { onStart, onEnd }) {
+    Object.assign(this, { document, api, onStart, onEnd });
     this.models = document.getElementById('showroom-models');
-    this.activity = document.getElementById('exhibition-session');
-    this.actions = document.getElementById('exhibition-actions');
     this.clock = document.getElementById('exhibition-timer');
     this.message = document.getElementById('showroom-notice');
     this.offset = 0;
@@ -103,35 +100,10 @@ export class Showroom {
     notice(this.message, 'Reservando unidad…');
     try {
       const data = await this.api.request(`/plataforma/exhibicion/${unit.id_vehiculo}/sesiones`, { method: 'POST' });
-      const session = { ...data, channel: '', ready: false, connected: false, sending: false };
-      this.session = session;
-      this.activity.hidden = false;
-      this.document.getElementById('exhibition-title').textContent = `Prueba · ${unit.nombre}`;
-      notice(this.message, 'Conectando con la unidad…');
-      this.render();
-      this.document.getElementById('exhibition-title').focus();
-      session.socket = this.openSocket(unit.id_vehiculo, data.token, {
-        onStatus: status => {
-          if (this.session !== session) return;
-          if (status !== 'connected' && session.ready) queueMicrotask(() => {
-            if (this.session === session) void this.finish('Se perdió la conexión. La prueba terminó.');
-          });
-        },
-        onPolicy: () => void this.finish('La reserva de invitado terminó.'),
-        onEvent: event => {
-          if (this.session !== session) return;
-          if (event.tipo === 'canal_control') {
-            session.channel = event.canal;
-            session.ready = true;
-            session.connected = event.dispositivo === true;
-            notice(this.message, session.connected ? '' : 'El dispositivo se desconectó.', !session.connected);
-            this.syncButtons();
-          } else if (event.tipo === 'dispositivo' && !event.conectado) {
-            void this.finish('El dispositivo se desconectó. La prueba terminó.');
-          }
-        },
-      });
-      session.timer = setInterval(() => this.tick(), 200);
+      this.session = { ...data };
+      notice(this.message, '');
+      this.onStart(unit, this.session);
+      this.session.timer = setInterval(() => this.tick(), 200);
       this.tick();
     } catch (error) {
       notice(this.message, error.message, true);
@@ -150,71 +122,19 @@ export class Showroom {
     if (!remaining) void this.finish('Se agotó el tiempo de la prueba.');
   }
 
-  render() {
-    const session = this.session;
-    const commands = session.comandos.map(command => {
-      const stop = command.nombre === 'DETENER';
-      const button = action(stop ? 'Detener' : commandLabel(command.nombre), () => void this.move(command), { primary: !stop });
-      button.dataset.guestCommand = stop ? 'stop' : 'move';
-      return button;
-    });
-    const end = action('Terminar sesión ahora', null);
-    end.classList.add('commercial-hold');
-    end.setAttribute('data-cursor-target', '');
-    end.setAttribute('aria-describedby', 'end-guest-hint');
-    const hint = node('small', 'Mantén presionado para devolver el mando.', 'commercial-muted');
-    hint.id = 'end-guest-hint';
-    session.removeHold = bindHoldGesture(end, HOLD_ACTION_MS, () => void this.finish('Prueba finalizada.'));
-    this.actions.replaceChildren(...commands, end, hint);
-    this.syncButtons();
-  }
-
-  syncButtons() {
-    const session = this.session;
-    for (const button of this.actions.querySelectorAll('[data-guest-command]')) {
-      button.disabled = !session?.ready || (!session.connected && button.dataset.guestCommand !== 'stop')
-        || (button.dataset.guestCommand === 'move' && (session.sending || session.cooling));
-    }
-  }
-
-  async move(command) {
-    const session = this.session;
-    if (!session?.ready) return;
-    const stop = command.nombre === 'DETENER';
-    if (!stop) { session.sending = true; this.syncButtons(); }
-    try {
-      await this.api.request('/plataforma/exhibicion/ordenes', { method: 'POST', body: { id_comando: command.id_comando },
-        bearerToken: session.token, channelId: session.channel });
-      if (this.session === session) notice(this.message, stop ? 'La API registró DETENER.' : 'La API registró la orden.');
-    } catch (error) {
-      if (this.session === session) notice(this.message, error.message, true);
-    } finally {
-      if (!stop && this.session === session) {
-        session.sending = false;
-        session.cooling = setTimeout(() => { session.cooling = null; this.syncButtons(); }, 1250);
-        this.syncButtons();
-      }
-    }
-  }
-
   async finish(reason = '', leaving = false) {
     const session = this.session;
     if (!session) return;
     this.session = null;
     this.reserving = true;
     clearInterval(session.timer);
-    clearTimeout(session.cooling);
-    session.removeHold?.();
-    this.activity.hidden = true;
-    this.actions.replaceChildren();
+    this.onEnd(leaving);
     let message = reason;
     try {
-      if (leaving) session.socket?.stop();
       await this.api.request('/plataforma/exhibicion/sesion', { method: 'DELETE', bearerToken: session.token, keepalive: leaving });
     } catch (error) {
       if (error.status !== 401) message = 'La detención se está comprobando en el servidor.';
     } finally {
-      session.socket?.stop();
       this.reserving = false;
       if (!leaving) {
         this.document.getElementById('showroom-heading').focus({ preventScroll: true });

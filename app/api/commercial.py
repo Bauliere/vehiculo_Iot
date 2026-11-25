@@ -63,14 +63,18 @@ def admin_access(request: Request, actor: Account):
 Admin = Annotated[object, Depends(admin_access)]
 
 
+async def guest_actor(ops, credential):
+    if not ops.display_enabled:
+        raise ApiError(403, "La exhibición está pausada.")
+    actor = await run_db(ops.exhibition.guest, credential)
+    if ops.reservations.get(actor.vehicle_id) != actor.expires:
+        raise ApiError(401, "La prueba está finalizando.")
+    return actor
+
+
 async def guest_access(request: Request, credential: Credential, ops=Depends(active)):
     async with ops.gate:
-        if not ops.display_enabled:
-            raise ApiError(403, "La exhibición está pausada.")
-        actor = await run_db(ops.exhibition.guest, token(credential))
-        deadline = ops.reservations.get(actor.vehicle_id)
-        if deadline is None or deadline != actor.expires:
-            raise ApiError(401, "La prueba está finalizando.")
+        actor = await guest_actor(ops, token(credential))
         request.state.commercial_actor = actor
         yield actor
 
@@ -92,12 +96,23 @@ async def legacy_access(request: Request, credential: Credential):
         raise ApiError(422, "El identificador de unidad no es válido.")
 
     async def authorize():
-        actor = await run_db(ops.identity.account, token(credential))
+        key = token(credential)
+        guest = key.startswith("g_")
+        if guest and (request.method, path) not in GUEST_CONTROL_ROUTES:
+            raise ApiError(401, "Esta operación requiere una cuenta.")
+        actor = await guest_actor(ops, key) if guest else await run_db(ops.identity.account, key)
         request.state.commercial_actor = actor
         if request.method == "POST" and path not in CONTROL_WRITES:
             raise ApiError(403, "La gestión comercial usa los endpoints de /plataforma.")
-        if vehicle is not None:
+        if guest:
+            if vehicle is None or int(vehicle) != actor.vehicle_id:
+                raise ApiError(403, "La reserva corresponde a otra unidad.")
+            if request.method == "POST":
+                ops.control_channel(actor, int(vehicle), request.headers.get("x-iot-channel"))
+        elif vehicle is not None:
             await ops.access_unit(actor, int(vehicle))
+            if path.endswith("/cancelar") and int(vehicle) in ops.reservations:
+                raise ApiError(409, "La unidad tiene una reserva de invitado activa.")
         if params.get("id_demo") is not None:
             rows = ops.fleet.visible_demos(await run_db(ops.fleet.demos, int(vehicle)), actor)
             if not any(str(row["id_demo"]) == params["id_demo"] for row in rows):
@@ -121,6 +136,15 @@ CONTROL_WRITES = frozenset({
     "/vehiculos/{id_vehiculo}/fausto/interpretar",
     "/vehiculos/{id_vehiculo}/fausto/{plan_id}/ejecutar",
     "/vehiculos/{id_vehiculo}/fausto/{plan_id}/cancelar",
+})
+GUEST_CONTROL_ROUTES = frozenset({
+    *(('POST', path) for path in CONTROL_WRITES),
+    ('GET', '/vehiculos/{id_vehiculo}'),
+    ('GET', '/vehiculos/{id_vehiculo}/estado'),
+    ('GET', '/vehiculos/{id_vehiculo}/comandos'),
+    ('GET', '/vehiculos/{id_vehiculo}/demos'),
+    ('GET', '/vehiculos/{id_vehiculo}/demos/{id_demo}'),
+    ('GET', '/vehiculos/{id_vehiculo}/demos/{id_demo}/movimientos'),
 })
 
 
@@ -325,7 +349,7 @@ async def guest_move(request: Request, body: GuestCommand, actor: Guest, channel
     command = next((row for row in commands if row["id_comando"] == body.id_comando), None)
     if not command:
         raise ApiError(403, "Ese comando no está permitido durante la exhibición.")
-    await ops.move(actor, actor.vehicle_id, channel, body.id_comando, "API")
+    await ops.move(actor, actor.vehicle_id, channel, body.id_comando, "API", min_interval=1.25)
     return {"mensaje": "Orden registrada"}
 
 
