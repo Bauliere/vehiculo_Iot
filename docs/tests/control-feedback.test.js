@@ -2,6 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ControlFeedback } from '../assets/js/components/control-feedback.js';
 
+test('el estado inicial del dispositivo prevalece sobre la orden de cambiar un auxiliar', () => {
+  const buttons = new Map(['ALTERNAR_LUCES', 'ALTERNAR_SONIDO'].map(name => [
+    name, { dataset: {}, setAttribute() {}, querySelector: () => null },
+  ]));
+  const feedback = new ControlFeedback({
+    querySelector: selector => buttons.get(selector.match(/"([^"]+)"/)?.[1]),
+    getElementById: () => ({ dataset: {} }),
+  }, 1);
+  const sound = buttons.get('ALTERNAR_SONIDO');
+  feedback.handleEvent({ tipo: 'auxiliares', id_vehiculo: 1, luces: true, sonido: true });
+  assert.equal(sound.dataset.toggle, 'on');
+  feedback.handleEvent({ tipo: 'movimiento_individual', id_vehiculo: 1, comando: 'ALTERNAR_SONIDO',
+    codigo: 8, timestamp: new Date().toISOString() });
+  assert.equal(sound.dataset.toggle, 'on');
+  feedback.handleEvent({ tipo: 'auxiliares', id_vehiculo: 1, luces: true, sonido: false });
+  assert.equal(sound.dataset.toggle, 'off');
+  assert.equal(buttons.get('ALTERNAR_LUCES').dataset.toggle, 'on');
+  feedback.stop();
+});
+
 test('los auxiliares conservan la última orden y sólo se apagan al vencer un tiempo explícito', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const light = { dataset: {}, setAttribute() {}, querySelector: () => null };

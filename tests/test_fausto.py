@@ -127,6 +127,22 @@ class FaustoContractTests(TestCase):
 
 
 class FaustoRunTests(IsolatedAsyncioTestCase):
+    async def test_direct_text_sequences_do_not_require_a_gemini_key(self):
+        service = FaustoService(Settings(_env_file=None), Mock())
+        service.gemini.interpret = Mock()
+        for text, expected in (
+            ("da vuelta atrás", [("RETROCEDER", 500)]),
+            ("gira a la izq.", [("GIRAR_IZQUIERDA", 500)]),
+            ("Avanza durante 10 segundos y luego gira a la derecha",
+             [("AVANZAR", 10000), ("GIRAR_DERECHA", 500)]),
+            ("Sube la caja medio segundo", [("SUBIR_CAJA", 500)]),
+            ("baja la caja durante 11 segundos", []),
+        ):
+            result = await service.interpret(1, FaustoInput(texto=text), "local")
+            self.assertEqual([(step["comando"], step["duracion_ms"]) for step in result["pasos"]], expected)
+        self.assertEqual(service.used, 0)
+        service.gemini.interpret.assert_not_called()
+
     async def test_enabling_and_disabling_prepare_absolute_orders_without_a_state_read(self):
         service = FaustoService(Settings(_env_file=None, gemini_api_key="mock"), Mock())
         service.gemini.interpret = Mock()

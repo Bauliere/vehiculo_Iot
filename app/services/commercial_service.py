@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import secrets
 import time
@@ -37,6 +38,7 @@ class CommercialService:
         self.gate = asyncio.Lock()
         self.channels = {}
         self.devices = {}
+        self.auxiliary_states = {}
         self.operators = {}
         self.reservations = {}
         self.reservations_loaded = False
@@ -273,6 +275,8 @@ class CommercialService:
                 "canal_control", vehicle_id, canal=channel_id,
                 dispositivo=vehicle_id in self.devices and vehicle_id not in self.pending_stops,
                 reserva_invitado=vehicle_id in self.reservations))
+            if auxiliary_state := self.auxiliary_states.get(vehicle_id):
+                await self.manager.enviar(vehicle_id, websocket, auxiliary_state)
         try:
             while True:
                 await websocket.receive_text()
@@ -308,14 +312,31 @@ class CommercialService:
                 await self.notify_device(vehicle_id, True)
         try:
             while True:
-                await websocket.receive_text()
+                await self.handle_auxiliary_state(vehicle_id, websocket, await websocket.receive_text())
         finally:
             await self.keep_cleanup(self.device_disconnected(vehicle_id, websocket))
+
+    async def handle_auxiliary_state(self, vehicle_id, websocket, text):
+        if len(text) > 128 or self.devices.get(vehicle_id) is not websocket:
+            return
+        try:
+            data = json.loads(text)
+        except (ValueError, RecursionError):
+            return
+        if (not isinstance(data, dict) or data.keys() != {"tipo", "luces", "sonido"}
+                or data["tipo"] != "auxiliares" or type(data["luces"]) is not bool or type(data["sonido"]) is not bool):
+            return
+        state = event("auxiliares", vehicle_id, luces=data["luces"], sonido=data["sonido"])
+        self.auxiliary_states[vehicle_id] = state
+        for channel in tuple(self.channels.values()):
+            if channel.vehicle_id == vehicle_id:
+                await self.manager.enviar(vehicle_id, channel.socket, state)
 
     async def device_disconnected(self, vehicle_id, websocket):
         async with self.gate:
             self.manager.desconectar(vehicle_id, websocket)
             self.devices.pop(vehicle_id, None)
+            self.auxiliary_states.pop(vehicle_id, None)
             # Un POST enviado antes de la caída puede llegar después de la reconexión.
             # Renueva los canales sin cerrar la pestaña ni cancelar la reserva.
             for channel in tuple(self.channels.values()):

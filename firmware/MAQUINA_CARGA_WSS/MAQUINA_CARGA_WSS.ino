@@ -2,7 +2,7 @@
   Actividad 4.3 - Maquina de carga, NodeMCU LoLin ESP-12E.
   ESP8266 core 3.1.2; WiFiManager 2.0.17; WebSockets 2.7.2;
   ArduinoJson 6.21.5 o 7.4.3. Monitor Serie: 115200.
-  Version 4.3.0: conecta al canal privado de la unidad con X-Device-Key.
+  Version 4.3.1: estado inferido de auxiliares y renovacion de la caja.
 
   Lee docs/guia/DESPLEGAR_4_3.md antes de cargar.
   La copia lista para flashear requiere el encabezado privado iot43_secrets.h.
@@ -103,6 +103,21 @@ uint32_t inicioBoton = 0, inicioReinicio = 0, ultimoAvisoHora = 0;
 uint32_t ultimoAvisoMemoria = 0;
 uint32_t ultimoEstadoWss = 0;
 
+struct AuxiliarPorToque {
+  uint8_t bit;
+  bool encendido;
+  bool objetivo;
+  uint32_t inicioTemporizado = 0;
+  uint32_t duracionTemporizada = 0;
+  uint32_t ultimoPulso = 0;
+};
+
+AuxiliarPorToque auxiliaresPorToque[] = {
+  {Maquina::BIT_LUCES, LUCES_AL_ARRANQUE, LUCES_AL_ARRANQUE},
+  {Maquina::BIT_SONIDO, SONIDO_AL_ARRANQUE, SONIDO_AL_ARRANQUE},
+};
+int16_t auxiliaresReportados = -1;
+
 void IRAM_ATTR temporizadorSeguridad() {
   Maquina::tickActuacion<Salidas595>(actuacion, redRestante, pulsoVencido, redVencida);
 }
@@ -124,6 +139,15 @@ void liberarSalidas(const char* motivo, bool incluirAuxiliares = true) {
 }
 
 void cambiarAuxiliar(const Maquina::Decision& orden, uint8_t patron) {
+  if (!AUXILIARES_MANTENIDOS) {
+    auto& auxiliar = auxiliaresPorToque[patron == Maquina::BIT_LUCES ? 0 : 1];
+    if (orden.auxiliar == Maquina::Auxiliar::ENCENDER) auxiliar.objetivo = true;
+    else if (orden.auxiliar == Maquina::Auxiliar::APAGAR) auxiliar.objetivo = false;
+    else auxiliar.objetivo = !auxiliar.objetivo;
+    auxiliar.duracionTemporizada = auxiliar.objetivo ? orden.duracionAuxiliar : 0;
+    auxiliar.inicioTemporizado = millis();
+    return;
+  }
   bool encendido = false;
   {
     esp8266::InterruptLock lock;
@@ -139,15 +163,50 @@ void cambiarAuxiliar(const Maquina::Decision& orden, uint8_t patron) {
       static_cast<unsigned long>(orden.duracionAuxiliar));
 }
 
+void atenderAuxiliares() {
+  if (paradaLocal || !wssConectado || !protocolo.listo() || redVencida || caidaWifi) return;
+  uint8_t estado = actuacion.auxiliares;
+  if (!AUXILIARES_MANTENIDOS) {
+    estado = 0;
+    const uint32_t ahora = millis();
+    for (auto& auxiliar : auxiliaresPorToque) {
+      if (auxiliar.encendido && auxiliar.duracionTemporizada && ahora - auxiliar.inicioTemporizado >= auxiliar.duracionTemporizada) {
+        auxiliar.objetivo = false;
+        auxiliar.duracionTemporizada = 0;
+      }
+      if (auxiliar.encendido != auxiliar.objetivo &&
+          ahora - auxiliar.ultimoPulso >= PULSO_INDIVIDUAL_MS + REPOSO_AUXILIAR_MS) {
+        {
+          esp8266::InterruptLock lock;
+          if (redVencida || caidaWifi || !redRestante) return;
+          actuacion.fijarAuxiliar(auxiliar.bit, true, PULSO_INDIVIDUAL_MS);
+          escribirPatronHardware(actuacion.patron());
+        }
+        auxiliar.encendido = auxiliar.objetivo;
+        auxiliar.inicioTemporizado = ahora;
+        auxiliar.ultimoPulso = ahora;
+        Serial.printf_P(PSTR("[AUXILIAR] %s | estado estimado=%s\n"),
+            auxiliar.bit == Maquina::BIT_LUCES ? "LUCES" : "SONIDO", auxiliar.encendido ? "ON" : "OFF");
+      }
+      if (auxiliar.encendido) estado |= auxiliar.bit;
+    }
+  }
+  if (!SALIDAS_FISICAS || auxiliaresReportados == estado) return;
+  char mensaje[64];
+  snprintf_P(mensaje, sizeof(mensaje), PSTR("{\"tipo\":\"auxiliares\",\"luces\":%s,\"sonido\":%s}"),
+      (estado & Maquina::BIT_LUCES) ? "true" : "false", (estado & Maquina::BIT_SONIDO) ? "true" : "false");
+  if (clienteWss.sendTXT(mensaje)) auxiliaresReportados = estado;
+}
+
 void iniciarPulso(const Maquina::Decision& orden) {
   if (paradaLocal || !wssConectado || !protocolo.listo() || redVencida || caidaWifi) return;
   const uint8_t patron = Maquina::patron(orden.codigo);
-  if (AUXILIARES_MANTENIDOS && (orden.codigo == 7 || orden.codigo == 8) &&
-      (orden.demo == 0 || orden.auxiliar != Maquina::Auxiliar::PULSO)) {
+  if ((orden.codigo == 7 || orden.codigo == 8) &&
+      (!AUXILIARES_MANTENIDOS || orden.demo == 0 || orden.auxiliar != Maquina::Auxiliar::PULSO)) {
     cambiarAuxiliar(orden, patron);
     return;
   }
-  const bool direccionIndividual = orden.demo == 0 && orden.codigo >= 1 && orden.codigo <= 4;
+  const bool direccionIndividual = orden.demo == 0 && orden.codigo >= 1 && orden.codigo <= 6;
   bool renovado = false;
   if (direccionIndividual && pulsoActivo && direccionIndividualActiva == orden.codigo) {
     esp8266::InterruptLock lock;
@@ -223,6 +282,11 @@ void informarWifi() {
 
 void perderConexion(const char* motivo) {
   liberarSalidas(motivo);
+  for (auto& auxiliar : auxiliaresPorToque) {
+    if (!auxiliar.encendido || !auxiliar.objetivo) auxiliar.duracionTemporizada = 0;
+    auxiliar.objetivo = auxiliar.encendido;
+  }
+  auxiliaresReportados = -1;
   protocolo.desconectar();
   redRestante = 0;
   wssConectado = false;
@@ -496,7 +560,7 @@ void setup() {
   snprintf(nombre, sizeof(nombre), "EXCAVADORA-%02X%02X%02X", mac[3], mac[4], mac[5]);
   nombreDispositivo = nombre;
   Serial.println(F("\n=== MAQUINA DE CARGA: WIFI + WSS ==="));
-  Serial.println(F("Firmware 4.3.0 | JSON " ARDUINOJSON_VERSION));
+  Serial.println(F("Firmware 4.3.1 | JSON " ARDUINOJSON_VERSION));
   if (!CREDENCIAL_DISPOSITIVO[0]) Serial.println(F("[WSS] Falta la credencial privada de la unidad."));
   if (!CLAVE_PORTAL[0]) Serial.println(F("[WIFI] Falta la clave privada del portal de configuracion."));
   Serial.print(F("Dispositivo: ")); Serial.println(nombreDispositivo);
@@ -533,6 +597,7 @@ void loop() {
     atenderSeguridad();
     gestionarWss();
     atenderSeguridad();
+    atenderAuxiliares();
     atenderSerie();
     if (!reinicioPendiente) atenderBoton();
   }

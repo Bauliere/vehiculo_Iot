@@ -299,6 +299,10 @@ class CommercialIntegration(unittest.TestCase):
             movement = {"id_comando": advance, "origen": "API"}
             with self.ws(unit, guest) as visitor:
                 first_channel = visitor.receive_json()["canal"]
+                hardware.send_json({"tipo": "auxiliares", "luces": 1, "sonido": True})
+                hardware.send_json({"tipo": "auxiliares", "luces": True, "sonido": True})
+                auxiliary = visitor.receive_json()
+                self.assertEqual((auxiliary["tipo"], auxiliary["luces"], auxiliary["sonido"]), ("auxiliares", True, True))
                 old_headers = {**guest, "X-IoT-Channel": first_channel}
                 self.request("POST", f"{path}/movimientos", 200, headers=old_headers, body=movement)
                 self.assertEqual(hardware.receive_json()["comando"], "AVANZAR")
@@ -364,6 +368,14 @@ class CommercialIntegration(unittest.TestCase):
             self.request("GET", f"{path}/demos/{public}/movimientos", 200, headers=guest)
             with self.ws(unit, guest) as visitor:
                 channel = {**guest, "X-IoT-Channel": visitor.receive_json()["canal"]}
+                plan = self.request("POST", f"{path}/fausto/interpretar", 200, headers=channel,
+                                    body={"texto": "Apaga las luces"})
+                self.request("POST", f"{path}/fausto/{plan['plan_id']}/ejecutar", 202, headers=channel)
+                for peer in (hardware, visitor):
+                    self.assertEqual(peer.receive_json()["tipo"], "demo_inicio")
+                    step = peer.receive_json()
+                    self.assertEqual((step["comando"], step["auxiliar"]), ("ALTERNAR_LUCES", "apagar"))
+                    self.assertEqual(peer.receive_json()["tipo"], "demo_fin")
                 self.request("POST", f"{path}/movimientos", 200, headers=channel, body={"id_comando": light, "origen": "API"})
                 self.assertEqual(visitor.receive_json()["comando"], "ALTERNAR_LUCES")
                 self.assertEqual(hardware.receive_json()["comando"], "ALTERNAR_LUCES")

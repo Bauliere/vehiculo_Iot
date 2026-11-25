@@ -6,6 +6,7 @@ export class ControlFeedback {
     Object.assign(this, { document, vehicleId });
     this.aux = { ALTERNAR_LUCES: false, ALTERNAR_SONIDO: false };
     this.known = new Set();
+    this.deviceReportsAux = false;
     this.seen = new Set();
     this.lastTime = -Infinity;
     this.timer = null;
@@ -14,6 +15,17 @@ export class ControlFeedback {
   }
 
   handleEvent(payload) {
+    if (payload?.tipo === 'auxiliares') {
+      if (payload.id_vehiculo !== this.vehicleId || typeof payload.luces !== 'boolean' || typeof payload.sonido !== 'boolean') return;
+      for (const timer of this.auxTimers.values()) clearTimeout(timer);
+      this.auxTimers.clear();
+      this.deviceReportsAux = true;
+      this.aux.ALTERNAR_LUCES = payload.luces;
+      this.aux.ALTERNAR_SONIDO = payload.sonido;
+      this.known = new Set(Object.keys(this.aux));
+      this.renderAux();
+      return;
+    }
     const event = normalizeEvent(payload, this.vehicleId);
     if (!event || event.order < this.lastTime || this.seen.has(event.signature)) return;
     this.seen.add(event.signature);
@@ -21,12 +33,12 @@ export class ControlFeedback {
     this.lastTime = event.order;
     if (event.type === 'estado_inicial') return;
     if (['demo_fin', 'demo_cancelada', 'demo_error'].includes(event.type)) this.neutral();
-    if (['demo_cancelada', 'demo_error'].includes(event.type)) this.resetAux();
+    if (!this.deviceReportsAux && ['demo_cancelada', 'demo_error'].includes(event.type)) this.resetAux();
     if (!['movimiento_individual', 'demo_movimiento'].includes(event.type)) return;
     const command = event.state?.command;
     if (Object.hasOwn(this.aux, command)) {
       const action = event.type === 'movimiento_individual' ? 'alternar' : payload.auxiliar;
-      if (['encender', 'apagar', 'alternar'].includes(action)) {
+      if (!this.deviceReportsAux && ['encender', 'apagar', 'alternar'].includes(action)) {
         this.updateAux(command, action, payload.duracion_auxiliar_ms);
       }
       const button = this.document.querySelector(`[data-aux="${command}"]`);
@@ -79,7 +91,8 @@ export class ControlFeedback {
       button.setAttribute('aria-pressed', String(active));
       const label = button.querySelector('.command-feedback');
       if (label) label.textContent = known ? active ? 'Encendido' : 'Apagado' : 'Sin estado';
-      button.title = `${name === 'ALTERNAR_LUCES' ? 'Luces' : 'Sonido'}: ${active ? 'apagar' : 'encender'}. Indicador solicitado en esta sesión, sin sensor físico.`;
+      const labelName = name === 'ALTERNAR_LUCES' ? 'Luces' : 'Sonido';
+      button.title = known ? `${labelName}: ${active ? 'apagar' : 'encender'}. Estado estimado.` : `${labelName}: esperando estado.`;
     }
   }
 
@@ -94,6 +107,7 @@ export class ControlFeedback {
     this.auxTimers.clear();
     for (const name of Object.keys(this.aux)) this.aux[name] = false;
     this.known.clear();
+    this.deviceReportsAux = false;
     this.renderAux();
   }
 

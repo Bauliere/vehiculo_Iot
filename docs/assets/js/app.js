@@ -91,11 +91,7 @@ class ControlApplication {
         this.joystick.reset();
         const name = direction === 'up' ? 'SUBIR_CAJA' : 'BAJAR_CAJA';
         const command = this.catalog.all().find(item => item.nombre === name);
-        if (command) {
-          this.controller.requestCommand(command.id_comando);
-          // La palanca también acepta un toque corto; no espera el debounce del joystick.
-          void this.controller.drain();
-        }
+        if (command) this.controller.requestCommand(command.id_comando, { held: true });
       },
       onRelease: () => void this.controller.releaseControl(),
     });
@@ -340,6 +336,8 @@ class ControlApplication {
         } else if (event.tipo === 'reserva_invitado') {
           this.guestReservation = event.activa === true;
           this.reclaimError = '';
+        } else if (event.tipo === 'auxiliares') {
+          this.feedback.handleEvent(event);
         } else if (event.tipo === 'dispositivo') {
           this.deviceConnected = event.conectado === true;
           if (typeof event.canal === 'string') this.api.channelId = this.deviceConnected ? event.canal : '';

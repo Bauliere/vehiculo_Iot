@@ -24,11 +24,14 @@ constexpr bool SALIDAS_FISICAS = MAQUINA_SALIDAS_FISICAS != 0;
 // 1 = futuro OE por D1 con pull-up, SOLO despues de separar OE de GND.
 constexpr bool CONTROL_OE_POR_D1 = MAQUINA_CONTROL_OE != 0;
 #ifndef MAQUINA_AUXILIARES_MANTENIDOS
-#define MAQUINA_AUXILIARES_MANTENIDOS 1
+#define MAQUINA_AUXILIARES_MANTENIDOS 0
 #endif
-// 1 para el control que apaga luces o sonido al soltar el boton.
-// 0 restaura un pulso si el propio control alterna con cada pulsacion.
+// 1 si el auxiliar depende del contacto mantenido; 0 si el mando alterna por toque.
 constexpr bool AUXILIARES_MANTENIDOS = MAQUINA_AUXILIARES_MANTENIDOS != 0;
+// En la MC-001 las luces y el sonido arrancan activos al energizar el carrito.
+constexpr bool LUCES_AL_ARRANQUE = true;
+constexpr bool SONIDO_AL_ARRANQUE = true;
+constexpr uint32_t REPOSO_AUXILIAR_MS = 100;
 constexpr int32_t ID_VEHICULO = 1;
 constexpr char SERVIDOR_WSS[] = "vehiculo-iot.34-225-114-88.sslip.io";
 constexpr uint16_t PUERTO_WSS = 443;

@@ -227,6 +227,8 @@ class GeminiInterpreter:
         except HTTPError as error:
             error.close()
             logger.warning("Gemini rechazó interpretación de %s (HTTP %s).", modality, error.code)
+            if error.code in (500, 502, 503, 504):
+                raise ApiError(502, "Gemini está temporalmente indisponible. Puedes escribir una orden directa, como «Gira a la izquierda».") from None
             if error.code == 429:
                 raise ApiError(429, "Gemini alcanzó su cuota de solicitudes.") from None
             if error.code in (401, 403):
@@ -282,6 +284,50 @@ def normalized_name(name):
     return " ".join(unaccented.replace("_", " ").split())
 
 
+DIRECT_MOVEMENTS = {
+    "avanza": "AVANZAR", "adelante": "AVANZAR", "muevete hacia delante": "AVANZAR",
+    "retrocede": "RETROCEDER", "reversa": "RETROCEDER", "da vuelta atras": "RETROCEDER",
+    "ve hacia atras": "RETROCEDER", "muevete hacia atras": "RETROCEDER",
+    "gira a la izquierda": "GIRAR_IZQUIERDA", "gira a la izq": "GIRAR_IZQUIERDA",
+    "gira a la derecha": "GIRAR_DERECHA", "gira a la der": "GIRAR_DERECHA",
+    "sube la caja": "SUBIR_CAJA", "baja la caja": "BAJAR_CAJA",
+    "deten el carrito": "DETENER", "detente": "DETENER", "para": "DETENER",
+}
+DURATION = (r"(\d{1,5}(?:[.,]\d{1,3})?|medio|media|un|una)"
+            r" (milisegundos?|ms|segundos?|seg|s)")
+
+
+def milliseconds(amount, unit):
+    quantities = {"medio": "0.5", "media": "0.5", "un": "1", "una": "1"}
+    value = Decimal(quantities.get(amount, amount.replace(",", ".")))
+    return value if unit.startswith(("mili", "ms")) else value * 1000
+
+
+def direct_movements(phrase, transcripcion):
+    steps = []
+    labels = []
+    for clause in re.split(r",? (?:y (?:luego|despues)|luego|despues) ", phrase):
+        match = re.fullmatch(rf"(.+?)(?: (?:durante |por )?{DURATION})?", clause)
+        if not match or match[1] not in DIRECT_MOVEMENTS:
+            return None
+        verb, amount, unit = match.groups()
+        command = DIRECT_MOVEMENTS[verb]
+        duration = milliseconds(amount, unit) if amount else (0 if command == "DETENER" else 500)
+        if (command == "DETENER" and amount) or (command != "DETENER" and
+                (not 1 <= duration <= 10000 or duration != int(duration))):
+            return Interpretation(respuesta="Usa hasta 10 segundos por movimiento y deja la detención sin duración.",
+                                  transcripcion=transcripcion, pasos=[])
+        steps.append(FaustoStep(comando=command, duracion_ms=int(duration)))
+        labels.append(f"{verb} durante {duration / 1000:g} s" if amount else verb)
+    if len(steps) > MAX_STEPS or sum(step.duracion_ms for step in steps) > 20000 or any(
+            step.comando == "DETENER" for step in steps[:-1]):
+        return Interpretation(respuesta="Usa hasta seis pasos y 20 segundos en total. Deja la detención al final.",
+                              transcripcion=transcripcion, pasos=[])
+    summary = " y después ".join(labels)
+    return Interpretation(respuesta=f"{summary[0].upper()}{summary[1:279]}.",
+                          transcripcion=transcripcion, pasos=steps)
+
+
 def fixed_interpretation(text, *, transcripcion=""):
     """Resuelve órdenes directas sin inferir un estado físico ni mover por la broma."""
     phrase = normalized_name(text).strip(" .,!¡")
@@ -295,12 +341,11 @@ def fixed_interpretation(text, *, transcripcion=""):
     order = re.fullmatch(
         r"(enciende|prende|activa|apaga|desactiva|silencia|alterna|cambia)"
         r"( las luces|las| el sonido| el audio)"
-        r"(?: (?:durante|por) (\d{1,5}(?:[.,]\d{1,3})?|medio|media|un|una)"
-        r" (milisegundos?|ms|segundos?|seg|s))?",
+        rf"(?: (?:durante|por) {DURATION})?",
         phrase,
     )
     if not order:
-        return None
+        return direct_movements(phrase, transcripcion)
     verb, target, amount, unit = order.groups()
     lights = target in ("las", " las luces")
     if lights and verb == "silencia":
@@ -317,17 +362,11 @@ def fixed_interpretation(text, *, transcripcion=""):
         if auxiliary != "encender":
             return Interpretation(respuesta="Indica si quieres encender el auxiliar por ese tiempo.",
                                   transcripcion=transcripcion, pasos=[])
-        if amount in ("medio", "media"):
-            value = Decimal("0.5")
-        elif amount in ("un", "una"):
-            value = Decimal(1)
-        else:
-            value = Decimal(amount.replace(",", "."))
-        milliseconds = value if unit.startswith(("mili", "ms")) else value * 1000
-        if not 1 <= milliseconds <= 10000 or milliseconds != int(milliseconds):
+        value = milliseconds(amount, unit)
+        if not 1 <= value <= 10000 or value != int(value):
             return Interpretation(respuesta="Pide una duración entre 1 milisegundo y 10 segundos.",
                                   transcripcion=transcripcion, pasos=[])
-        duration = int(milliseconds)
+        duration = int(value)
     time_label = f" durante {duration / 1000:g} s" if duration else ""
     return Interpretation(
         respuesta=f"Voy a {auxiliary} {label}{time_label}.",
@@ -347,8 +386,8 @@ class FaustoService:
         self.used = 0
         self.in_flight = 0
 
-    def take_quota(self, client):
-        if not self.settings.gemini_api_key.get_secret_value():
+    def take_quota(self, client, *, provider):
+        if provider and not self.settings.gemini_api_key.get_secret_value():
             raise ApiError(503, "Fausto.IA aún no tiene una clave de Gemini configurada en AWS.")
         now = time.monotonic()
         while self.calls and now - self.calls[0][0] >= 60:
@@ -356,15 +395,16 @@ class FaustoService:
         day = datetime.now(timezone.utc).date()
         if day != self.day:
             self.day, self.used = day, 0
-        if (self.in_flight >= 2 or self.used >= self.settings.fausto_daily_limit
-                or sum(address == client for _, address in self.calls) >= 5):
+        if (len(self.calls) >= 160 or sum(address == client for _, address in self.calls) >= 5
+                or (provider and (self.in_flight >= 2 or self.used >= self.settings.fausto_daily_limit))):
             raise ApiError(429, "Fausto.IA alcanzó su límite de solicitudes.")
         self.calls.append((now, client))
-        self.used += 1
+        if provider:
+            self.used += 1
 
     async def interpret(self, vehicle_id, source, client, *, scope=None):
-        self.take_quota(client)
         result = fixed_interpretation(source.texto) if source.texto else None
+        self.take_quota(client, provider=result is None)
         if result is None:
             self.in_flight += 1
             # Conserva el cupo hasta que termina la petición, aunque el navegador se desconecte.
